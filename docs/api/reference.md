@@ -8,7 +8,9 @@ This document provides comprehensive API documentation for all NEXUS modules.
 
 ## Table of Contents
 
-- [NEXUSCore](#nexuscore)
+- [FlowingNEXUS (Layer-Free)](#flowingnexus-layer-free) 🆕
+- [NEXUSCore (Layered)](#nexuscore)
+- [Living System](#living-system)
 - [SelectiveStateSpace](#selectivestatespace)
 - [HierarchicalWorldModel](#hierarchicalworldmodel)
 - [NeuroSymbolicReasoner](#neurosymbolicreasoner)
@@ -16,6 +18,156 @@ This document provides comprehensive API documentation for all NEXUS modules.
 - [CausalInferenceEngine](#causalinferenceengine)
 - [Training](#training)
 - [Evaluation](#evaluation)
+
+---
+
+## FlowingNEXUS (Layer-Free) 🆕
+
+Layer-free architecture with emergent depth. **Recommended for new development.**
+
+### Philosophy
+
+> *Depth is not a hyperparameter. It emerges from input complexity.*
+
+Traditional networks have fixed layers; FlowingNEXUS iterates a single dynamics function to equilibrium.
+
+### Class Definition
+
+```python
+class FlowingNEXUS(nn.Module):
+    """
+    Layer-free NEXUS architecture with emergent depth.
+    
+    Key properties:
+    - Single parametric dynamics f(z, x) iterated to equilibrium
+    - Depth emerges from input complexity, not hyperparameters
+    - O(1) memory backprop via implicit differentiation
+    - Adaptive compute: easy inputs converge fast
+    """
+```
+
+### Constructor
+
+```python
+def __init__(
+    self,
+    config: FlowingConfig
+)
+```
+
+FlowingNEXUS takes a FlowingConfig dataclass with the following parameters:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `d_model` | int | 512 | State dimension |
+| `d_latent` | int | 256 | Latent space dimension |
+| `max_flow_steps` | int | 50 | Maximum evolution iterations |
+| `convergence_threshold` | float | 1e-4 | Fixed point tolerance |
+| `damping` | float | 0.5 | Update damping factor |
+| `ssm_d_state` | int | 64 | State space dimension |
+| `memory_size` | int | 128 | Co-evolving memory size |
+| `implicit_diff` | bool | True | Use implicit differentiation |
+| `vocab_size` | int | 50000 | Vocabulary size |
+
+### Methods
+
+#### forward
+
+```python
+def forward(
+    self,
+    x: torch.Tensor,
+    modality: str = "continuous",
+    return_trajectory: bool = False
+) -> Dict[str, Any]
+```
+
+**Parameters:**
+- `x`: Input tensor. Shape depends on modality:
+  - `"continuous"`: `[batch_size, seq_len, d_model]`
+  - `"token"`: `[batch_size, seq_len]` (token indices)
+- `modality`: Input type - "continuous" or "token"
+- `return_trajectory`: Whether to return full evolution trajectory
+
+**Returns:** Dict with:
+- `logits`: Output logits. Shape: `[batch_size, seq_len, vocab_size]`
+- `flow_steps`: Number of iterations to convergence (int)
+- `converged`: Whether equilibrium was reached (bool)
+- `final_energy`: Residual norm at convergence (float)
+- `trajectory`: (if requested) List of intermediate states
+
+**Example:**
+```python
+from nexus.core import create_flowing_nexus
+
+model = create_flowing_nexus(size="base")
+x = torch.randn(2, 100, model.config.d_model)
+
+# Basic forward
+result = model(x, modality="continuous")
+print(f"Flow steps: {result['flow_steps']}")
+print(f"Converged: {result['converged']}")
+
+# With trajectory
+result = model(x, modality="continuous", return_trajectory=True)
+print(f"Trajectory length: {len(result['trajectory'])}")
+```
+
+#### get_flow_complexity
+
+```python
+def get_flow_complexity(
+    self,
+    x: torch.Tensor,
+    modality: str = "continuous"
+) -> Dict[str, Any]
+```
+
+Analyze computational complexity for an input.
+
+**Returns:** Dict with:
+- `flow_steps`: Iterations used
+- `converged`: Whether converged
+- `final_energy`: Final residual
+
+### Factory Functions
+
+```python
+def create_flowing_nexus(
+    size: str = "small",
+    **config_overrides
+) -> FlowingNEXUS:
+    """
+    Create FlowingNEXUS with preset configuration.
+    
+    Args:
+        size: "tiny", "small", "base", "large"
+        **config_overrides: Override default config values
+    
+    Returns:
+        Configured FlowingNEXUS model
+    """
+
+def create_living_flowing_nexus(
+    size: str = "small",
+    **config_overrides
+) -> LivingFlowingNEXUS:
+    """
+    Create Living FlowingNEXUS for continuous learning.
+    
+    Combines layer-free architecture with anti-hallucination
+    and continuous evolution capabilities.
+    """
+```
+
+### Size Presets
+
+| Size | d_model | max_flow_steps | memory_size | ~Params |
+|------|---------|----------------|-------------|---------|
+| tiny | 128 | 30 | 64 | ~2M |
+| small | 256 | 40 | 128 | ~10M |
+| base | 512 | 50 | 256 | ~50M |
+| large | 1024 | 64 | 512 | ~200M |
 
 ---
 
@@ -145,6 +297,170 @@ def save_pretrained(self, save_path: str) -> None
 ```
 
 Save model to directory.
+
+---
+
+## Living System
+
+The Living System APIs provide NEXUS's continuous evolution capabilities.
+
+### LivingNEXUS
+
+```python
+class LivingNEXUS(nn.Module):
+    """
+    Living NEXUS - A continuously evolving AI system.
+    
+    Core Principles:
+    1. NEVER HALLUCINATE - Refuse politely when uncertain
+    2. LEARN CONTINUOUSLY - Every interaction is a learning opportunity
+    3. EVOLVE ORGANICALLY - No stages, no labels, just smooth growth
+    4. KNOW YOUR LIMITS - Track what you know and don't know
+    
+    Supports two architecture modes:
+    - "flowing": Layer-free with emergent depth (default, recommended)
+    - "layered": Traditional stacked layers
+    """
+```
+
+#### Constructor
+
+```python
+def __init__(
+    self,
+    model: Union[NEXUSCore, FlowingNEXUS],
+    config: LivingConfig = None
+)
+```
+
+#### interact
+
+```python
+def interact(
+    self,
+    batch: Dict[str, torch.Tensor],
+    modality: str = "token",
+    learn: bool = None,
+    domain: Optional[str] = None
+) -> InteractionResult
+```
+
+Primary interaction method - respond and optionally learn.
+
+**Returns:** `InteractionResult` with:
+- `logits`: Output logits
+- `confidence`: Model's confidence (0-1)
+- `responded`: True if answered, False if wisely refused
+- `experience_factor`: Continuous evolution measure (0→1)
+- `flow_depth`: (layer-free only) Emergent depth used
+- `converged`: (layer-free only) Whether equilibrium was reached
+- `flow_energy`: (layer-free only) Final residual norm
+
+#### ask / teach
+
+```python
+def ask(self, batch, modality="token") -> Tuple[torch.Tensor, bool, float]
+def teach(self, samples: List[Dict]) -> Dict[str, float]
+```
+
+### LifecycleManager
+
+```python
+class LifecycleManager:
+    """
+    Manages continuous evolution - no stages, just smooth growth.
+    
+    Confidence threshold and learning rate are continuous functions
+    of experience - they flow naturally, not in steps.
+    """
+```
+
+#### Properties
+
+```python
+@property
+def confidence_threshold(self) -> float:
+    """Starts at 0.95, smoothly approaches 0.35 with experience."""
+
+@property
+def learning_rate_multiplier(self) -> float:
+    """Starts at 2.5, smoothly approaches 0.1 with experience."""
+```
+
+#### get_status
+
+```python
+def get_status(self) -> Dict[str, Any]:
+    """
+    Returns:
+        {
+            'total_interactions': int,
+            'experience_factor': float,  # 0→1 continuous
+            'wisdom_ratio': float,       # refusal rate
+            'confidence_threshold': float,
+            'learning_rate_multiplier': float,
+            ...
+        }
+    """
+```
+
+### UncertaintyGate
+
+```python
+class UncertaintyGate(nn.Module):
+    """
+    Anti-hallucination guardian.
+    
+    When confidence is below threshold, the system gracefully
+    declines rather than fabricating a response.
+    """
+    
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        threshold: float = 0.5
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Returns:
+            confidence: Confidence scores (batch,)
+            uncertainty: Uncertainty estimates (batch,)
+            should_respond: Boolean mask (batch,)
+        """
+```
+
+### Factory Function
+
+```python
+def create_living_nexus(
+    size: str = "small",
+    architecture: str = "flowing",
+    start_fresh: bool = True,
+    checkpoint_path: Optional[str] = None,
+    **config_overrides
+) -> LivingNEXUS:
+    """
+    Create a Living NEXUS ready to learn and respond.
+    
+    Args:
+        size: Model size - "tiny", "small", "base", "large"
+        architecture: Architecture mode:
+            - "flowing": Layer-free with emergent depth (default, recommended)
+            - "layered": Traditional stacked layers
+        start_fresh: Start with fresh experience
+        checkpoint_path: Optional path to load from
+        **config_overrides: Override config values
+    
+    Returns:
+        Configured LivingNEXUS instance
+    
+    Example:
+        # Layer-free (default)
+        nexus = create_living_nexus(size="small")
+        
+        # Traditional layered
+        nexus = create_living_nexus(size="small", architecture="layered")
+    """
+```
 
 ---
 

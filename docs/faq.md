@@ -8,7 +8,13 @@
 
 ### What is NEXUS?
 
-NEXUS (Neural EXploratory Unified Synthesis) is a next-generation AI architecture that combines five paradigms:
+NEXUS (Neural EXploratory Unified Synthesis) is a **living AI system** that:
+- **Never hallucinates** - refuses politely when uncertain
+- **Learns continuously** - every interaction is a learning opportunity
+- **Evolves organically** - no stages or labels, just smooth continuous growth
+- Achieves O(n) efficiency vs Transformer's O(n²)
+
+It combines five paradigms:
 - Selective State Space Models (O(n) sequence processing)
 - Hierarchical World Models (predictive representations)
 - Neuro-Symbolic Reasoning (hybrid reasoning)
@@ -25,6 +31,8 @@ NEXUS (Neural EXploratory Unified Synthesis) is a next-generation AI architectur
 | Reasoning | Implicit | Explicit symbolic |
 | Computation | Fixed | Adaptive |
 | Causality | Correlational | Causal |
+| Hallucination | Prone to fabricate | Refuses when uncertain |
+| Learning | Static after training | Continuous while serving |
 
 ### What tasks is NEXUS good for?
 

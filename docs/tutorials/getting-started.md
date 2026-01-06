@@ -9,11 +9,13 @@ Step-by-step tutorials for using NEXUS.
 ## Tutorial Index
 
 1. [Quick Start](#quick-start) - Get up and running in 5 minutes
-2. [Basic Usage](#basic-usage) - Core functionality
-3. [Training Your First Model](#training-your-first-model) - End-to-end training
-4. [Reasoning Tasks](#reasoning-tasks) - Using reasoning capabilities
-5. [Causal Inference](#causal-inference) - Causal queries and planning
-6. [Custom Configurations](#custom-configurations) - Customize NEXUS
+2. [Layer-Free Architecture](#layer-free-architecture) - 🆕 Emergent depth computation
+3. [Basic Usage](#basic-usage) - Core functionality
+4. [Training Your First Model](#training-your-first-model) - End-to-end training
+5. [Reasoning Tasks](#reasoning-tasks) - Using reasoning capabilities
+6. [Causal Inference](#causal-inference) - Causal queries and planning
+7. [Custom Configurations](#custom-configurations) - Customize NEXUS
+8. [Continual / Online Learning](#continual--online-learning) - Learn while serving
 
 ---
 
@@ -33,7 +35,27 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-### First Inference
+### First Inference (Layer-Free - Recommended)
+
+```python
+import torch
+from nexus.core import create_flowing_nexus
+
+# Create layer-free model
+model = create_flowing_nexus(size="small")
+
+# Prepare continuous input
+x = torch.randn(1, 50, model.config.d_model)
+
+# Forward pass - depth emerges naturally!
+result = model(x, modality="continuous")
+
+print(f"Output shape: {result['logits'].shape}")
+print(f"Flow steps (emergent depth): {result['flow_steps']}")
+print(f"Converged: {result['converged']}")
+```
+
+### First Inference (Traditional Layered)
 
 ```python
 import torch
@@ -60,7 +82,100 @@ print(f"Output shape: {logits.shape}")
 # Output: torch.Size([1, 50, 32000])
 ```
 
-That's it! You've run your first NEXUS inference.
+---
+
+## Layer-Free Architecture
+
+🆕 **NEW in NEXUS**: FlowingNEXUS introduces layer-free computation where depth emerges from input complexity.
+
+### The Philosophy
+
+> *Growth is not a ladder with rungs to climb.*  
+> *It is water finding its level.*
+
+Traditional neural nets have fixed depth: `input → layer₁ → layer₂ → ... → layerₙ → output`
+
+FlowingNEXUS flows to equilibrium: `input → f(z*, input) → output` where `z* = f(z*, input)`
+
+### Key Benefits
+
+| Traditional Layers | Layer-Free (FlowingNEXUS) |
+|--------------------|---------------------------|
+| Fixed compute for all inputs | Adapts compute to input complexity |
+| Depth is a hyperparameter | Depth emerges naturally |
+| Same iterations always | Easy inputs converge fast |
+| Parameters scale with depth | Constant parameters |
+
+### Using FlowingNEXUS
+
+```python
+from nexus.core import create_flowing_nexus, FlowingConfig
+
+# Simple creation
+model = create_flowing_nexus(size="base")
+
+# Or with custom config
+config = FlowingConfig(
+    d_model=512,
+    max_flow_steps=50,         # Max iterations (not fixed depth!)
+    convergence_threshold=1e-4, # When to stop
+    damping=0.5,               # Update smoothing
+)
+model = FlowingNEXUS(config)
+
+# Forward pass
+x = torch.randn(2, 100, config.d_model)
+result = model(x, modality="continuous")
+
+# Results include flow information
+print(f"Logits: {result['logits'].shape}")
+print(f"Flow steps: {result['flow_steps']}")     # How many iterations
+print(f"Converged: {result['converged']}")       # Did it reach equilibrium?
+print(f"Final energy: {result['final_energy']}") # Residual norm
+```
+
+### Observing Emergent Depth
+
+```python
+# Different inputs need different "depths"
+model = create_flowing_nexus(size="small")
+
+# Simple input
+simple_x = torch.zeros(1, 50, model.config.d_model)
+simple_result = model(simple_x, modality="continuous")
+print(f"Simple input depth: {simple_result['flow_steps']}")
+
+# Complex input
+complex_x = torch.randn(1, 50, model.config.d_model) * 5
+complex_result = model(complex_x, modality="continuous")
+print(f"Complex input depth: {complex_result['flow_steps']}")
+
+# Depth varies based on input!
+```
+
+### Flow Trajectory Visualization
+
+```python
+# Get the full evolution trajectory
+result = model(x, modality="continuous", return_trajectory=True)
+
+trajectory = result['trajectory']
+print(f"Trajectory has {len(trajectory)} states")
+
+# Plot convergence
+import matplotlib.pyplot as plt
+
+energies = []
+for i, state in enumerate(trajectory[:-1]):
+    diff = (trajectory[i+1] - state).norm().item()
+    energies.append(diff)
+
+plt.plot(energies)
+plt.xlabel("Iteration")
+plt.ylabel("State Change (Energy)")
+plt.title("Convergence to Equilibrium")
+plt.show()
+```
 
 ---
 
@@ -231,6 +346,96 @@ trainer.train(train_loader, val_loader)
 
 # Model is saved to config.output_dir
 print(f"Model saved to {config.output_dir}")
+```
+
+---
+
+## Continual / Online Learning
+
+NEXUS is designed as a **living system** that learns and responds in parallel, never hallucinates, and evolves organically through experience.
+
+### Philosophy
+
+> *Growth is not a ladder with rungs to climb.*  
+> *It is water finding its level.*  
+> *The system doesn't "become" something new -*  
+> *it continuously IS, shaped by all it has experienced.*
+
+### Using Living NEXUS with Layer-Free Architecture (Recommended)
+
+```python
+from nexus.core import create_living_nexus
+
+# Create a fresh NEXUS with layer-free architecture (default)
+nexus = create_living_nexus(size="small")  # architecture="flowing" is default
+
+# Interact - learns and responds simultaneously
+result = nexus.interact(batch)
+
+if result.responded:
+    print("Answer:", result.logits)
+    print(f"Confidence: {result.confidence:.2f}")
+    
+    # 🆕 Layer-free architecture provides flow information
+    print(f"Flow depth: {result.flow_depth}")  # Emergent depth
+    print(f"Converged: {result.converged}")    # Did it reach equilibrium?
+else:
+    # NEXUS wisely refuses when uncertain - this is not failure, it's wisdom
+    print("NEXUS: I don't know enough about this yet.")
+
+# Check evolution status (no stages, just continuous metrics)
+status = nexus.get_status()
+print(f"Total interactions: {status['total_interactions']}")
+print(f"Experience factor: {status['experience_factor']:.4f}")  # 0→1 smooth curve
+print(f"Wisdom ratio: {status['wisdom_ratio']:.2f}")  # How often it wisely refuses
+print(f"Confidence threshold: {status['confidence_threshold']:.2f}")  # Evolves with experience
+print(f"Average flow depth: {status['average_flow_depth']:.1f}")  # 🆕 Mean emergent depth
+```
+
+### Using Living NEXUS with Traditional Layered Architecture
+
+```python
+from nexus.core import create_living_nexus
+
+# Create NEXUS with traditional layered architecture
+nexus = create_living_nexus(size="small", architecture="layered")
+
+# Interact - same interface, but fixed depth
+result = nexus.interact(batch)
+
+if result.responded:
+    print("Answer:", result.logits)
+    print(f"Confidence: {result.confidence:.2f}")
+```
+
+### Key Concepts
+
+| Concept | Description |
+|---------|-------------|
+| **experience_factor** | 0→1 continuous measure of accumulated experience |
+| **wisdom_ratio** | How often the system wisely says "I don't know" |
+| **confidence_threshold** | Starts high (0.95), decreases smoothly with experience |
+| **learning_rate_multiplier** | Starts high (2.5x), decreases as system matures |
+
+### Using ContinualLearner (Lower Level)
+
+For more control, use ContinualLearner directly:
+
+```python
+from nexus.core.nexus_core import NEXUSCore, NEXUSConfig
+from nexus.training import TrainingConfig, ContinualConfig, ContinualLearner
+
+model = NEXUSCore(NEXUSConfig())
+train_cfg = TrainingConfig()
+cont_cfg = ContinualConfig(buffer_size=2048, replay_ratio=0.5, microbatch_size=4)
+learner = ContinualLearner(model, train_cfg, cont_cfg)
+
+# Answer
+outputs = learner.respond(batch)
+
+# Learn a few safe steps with replay while continuing to answer
+metrics = learner.observe_and_learn([batch])
+print(metrics)
 ```
 
 ### Step 4: Evaluate

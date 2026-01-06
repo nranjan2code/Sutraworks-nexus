@@ -63,8 +63,8 @@ NEXUS (Neural EXploratory Unified Synthesis) represents a paradigm shift in AI a
 | **World Modeling** | JEPA-style abstract representation learning |
 | **Explainable Reasoning** | Neuro-symbolic proofs with symbolic grounding |
 | **Causal Understanding** | Native intervention and counterfactual support |
-| **Adaptive Computation** | Energy-based dynamic depth allocation |
-
+| **Adaptive Computation** | Energy-based dynamic depth allocation || **Living System** | Learns and responds in parallel, evolves continuously |
+| **Anti-Hallucination** | Refuses politely when uncertain, never makes things up |
 ## Quick Links
 
 - [GitHub Repository](https://github.com/sutraworks/nexus)

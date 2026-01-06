@@ -4,6 +4,93 @@
 
 This document provides a comprehensive view of the NEXUS architecture, explaining how all components integrate into a unified system.
 
+NEXUS offers **two architecture modes**:
+1. **FlowingNEXUS (Layer-Free)** - Emergent depth, recommended for new development
+2. **NEXUSCore (Layered)** - Traditional stacked layers, well-tested baseline
+
+---
+
+## Layer-Free Architecture (FlowingNEXUS) 🆕
+
+The layer-free architecture represents a paradigm shift where **depth emerges from input complexity** rather than being a fixed hyperparameter.
+
+### Key Concept
+
+Traditional neural networks: `input → layer₁ → layer₂ → ... → layerₙ → output`
+
+FlowingNEXUS: `input → f(z*, input) → output` where `z* = f(z*, input)` (fixed point)
+
+### Components
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          FLOWING NEXUS (LAYER-FREE)                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   INPUT ──► UnifiedDynamics f(z, x) ──► ITERATE ──► Equilibrium z* ──► OUT │
+│                    ↑                        │                               │
+│                    └────────────────────────┘                               │
+│                                                                             │
+│   UnifiedDynamics contains:                                                 │
+│   • Continuous SSM (state space evolution)                                  │
+│   • Continuous Attention (global context)                                   │
+│   • Co-evolving Memory (persistent state)                                   │
+│   • Feed-forward transformation                                             │
+│                                                                             │
+│   Training uses implicit differentiation: O(1) memory backprop!             │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Usage
+
+```python
+from nexus.core import create_flowing_nexus
+
+model = create_flowing_nexus(size="base")
+result = model(x, modality="continuous")
+
+print(f"Flow steps (emergent depth): {result['flow_steps']}")
+print(f"Converged: {result['converged']}")
+```
+
+---
+
+## Living System Layer
+
+NEXUS operates as a **living system** that evolves continuously through experience.
+
+### Philosophy
+
+> *Growth is not a ladder with rungs to climb.*  
+> *It is water finding its level.*  
+> *The system doesn't "become" something new -*  
+> *it continuously IS, shaped by all it has experienced.*
+
+### Components
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           LIVING NEXUS LAYER                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐       │
+│  │  UncertaintyGate  │  │ LifecycleManager  │  │  ContinualLearner │       │
+│  │                   │  │                   │  │                   │       │
+│  │ Anti-hallucination│  │ Continuous        │  │ Learn while       │       │
+│  │ Refuse when       │  │ evolution         │  │ serving           │       │
+│  │ uncertain         │  │ (no stages)       │  │                   │       │
+│  └───────────────────┘  └───────────────────┘  └───────────────────┘       │
+│                                                                             │
+│  Key Metrics (all continuous, no discrete stages):                          │
+│  ├── experience_factor: 0→1 smooth curve of accumulated wisdom              │
+│  ├── confidence_threshold: 0.95→0.35 (cautious when new, knows limits)     │
+│  ├── learning_rate_mult: 2.5→0.1 (absorbs fast, then selective)            │
+│  └── wisdom_ratio: how often it wisely says "I don't know"                 │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
 ---
 
 ## High-Level Architecture

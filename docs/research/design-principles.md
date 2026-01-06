@@ -6,6 +6,26 @@ This document outlines the fundamental design principles guiding NEXUS developme
 
 ---
 
+## Living System Philosophy
+
+NEXUS is designed as a **living system** that evolves organically:
+
+> *Growth is not a ladder with rungs to climb.*  
+> *It is water finding its level.*  
+> *The system doesn't "become" something new -*  
+> *it continuously IS, shaped by all it has experienced.*
+
+### Key Living System Principles
+
+| Principle | Implementation |
+|-----------|----------------|
+| **Never Hallucinate** | UncertaintyGate refuses when not confident |
+| **Learn Continuously** | Every interaction is a learning opportunity |
+| **Evolve Organically** | No stages or labels, just smooth continuous growth |
+| **Know Your Limits** | Track domain confidence, calibrate over time |
+
+---
+
 ## Core Design Principles
 
 ### 1. Efficiency First
