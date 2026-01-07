@@ -8,14 +8,181 @@ Step-by-step tutorials for using NEXUS.
 
 ## Tutorial Index
 
-1. [Quick Start](#quick-start) - Get up and running in 5 minutes
-2. [Layer-Free Architecture](#layer-free-architecture) - 🆕 Emergent depth computation
-3. [Basic Usage](#basic-usage) - Core functionality
-4. [Training Your First Model](#training-your-first-model) - End-to-end training
-5. [Reasoning Tasks](#reasoning-tasks) - Using reasoning capabilities
-6. [Causal Inference](#causal-inference) - Causal queries and planning
-7. [Custom Configurations](#custom-configurations) - Customize NEXUS
-8. [Continual / Online Learning](#continual--online-learning) - Learn while serving
+1. [Production Quick Start (v2.0)](#production-quick-start-v20) - 🆕 Get production system running
+2. [Quick Start](#quick-start) - Get up and running in 5 minutes
+3. [Layer-Free Architecture](#layer-free-architecture) - 🆕 Emergent depth computation
+4. [Basic Usage](#basic-usage) - Core functionality
+5. [Training Your First Model](#training-your-first-model) - End-to-end training
+6. [Reasoning Tasks](#reasoning-tasks) - Using reasoning capabilities
+7. [Causal Inference](#causal-inference) - Causal queries and planning
+8. [Custom Configurations](#custom-configurations) - Customize NEXUS
+9. [Continual / Online Learning](#continual--online-learning) - Learn while serving
+10. [Nexus Continuum Service](#nexus-continuum-service) - Always-on daemon
+11. [Production Operations](#production-operations) - 🆕 Running NEXUS in production
+
+
+---
+
+## Production Quick Start (v2.0)
+
+🆕 **NEW in NEXUS v2.0**: Production-ready deployment with zero technical debt.
+
+### What You Get
+
+- **Real Tokenization**: HuggingFace transformers (no mocks!)
+- **Checkpoint Persistence**: Automatic saves every 5 minutes
+- **Comprehensive Metrics**: Prometheus export, health checks
+- **Circuit Breaker**: Graceful degradation on errors
+- **Memory Management**: Leak detection, automatic cleanup
+- **CLI Control**: `nexusctl` for all operations
+- **Web Dashboard**: Real-time monitoring and interaction
+- **Remote Access**: SSH tunnel, Tailscale, ngrok support
+
+### Installation
+
+```bash
+# Clone repository
+git clone https://github.com/sutraworks/nexus.git
+cd nexus
+
+# Install production dependencies
+pip install -r requirements.txt
+```
+
+### Start Production System
+
+```bash
+# Make nexusctl executable (first time only)
+chmod +x nexusctl
+
+# Start NEXUS
+./nexusctl start
+
+# Check status
+./nexusctl status
+
+# Open dashboard
+./nexusctl dashboard
+```
+
+### Your First Interaction
+
+**Option 1: Using Dashboard**
+```bash
+# Open dashboard in browser
+./nexusctl dashboard
+
+# Navigate to http://localhost:8000/dashboard
+# Use the interaction panel to chat with NEXUS
+```
+
+**Option 2: Using API**
+```bash
+curl -X POST http://localhost:8000/api/interact \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "What is Python?"}'
+```
+
+**Option 3: Using Python**
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:8000/api/interact",
+    json={"prompt": "What is Python?"}
+)
+
+print(response.json()["response"])
+```
+
+### Monitor System Health
+
+```bash
+# Detailed status
+./nexusctl status
+
+# Quick health check
+./nexusctl health
+
+# Follow logs
+./nexusctl logs -f
+```
+
+### Control Operations
+
+```bash
+# Pause background learning (keeps serving requests)
+./nexusctl pause
+
+# Resume background learning
+./nexusctl resume
+
+# Restart NEXUS
+./nexusctl restart
+
+# Stop NEXUS (saves checkpoint automatically)
+./nexusctl stop
+```
+
+### Deploy to Raspberry Pi
+
+```bash
+# SSH to your Pi
+ssh pi@raspberrypi.local
+
+# Clone and install
+git clone https://github.com/sutraworks/nexus.git
+cd nexus
+sudo deployment/install.sh
+
+# Start service
+sudo systemctl start nexus
+
+# Enable auto-start on boot
+sudo systemctl enable nexus
+
+# Check status
+sudo systemctl status nexus
+```
+
+**Access remotely**:
+```bash
+# From your laptop, create SSH tunnel
+ssh -L 8000:localhost:8000 pi@raspberrypi.local
+
+# Then visit http://localhost:8000/dashboard
+```
+
+See [RASPBERRY_PI.md](../../RASPBERRY_PI.md) for complete guide.
+
+### Production Deployment
+
+**Linux (systemd)**:
+```bash
+sudo deployment/install.sh
+sudo systemctl start nexus
+sudo systemctl enable nexus
+```
+
+**macOS**:
+```bash
+./deployment/run_mac.sh
+# Or use nexusctl:
+./nexusctl start
+```
+
+**Windows**:
+```powershell
+python -m uvicorn nexus.service.server:app --host 0.0.0.0 --port 8000
+```
+
+See [START.md](../../START.md) and [CONTROL_GUIDE.md](../../CONTROL_GUIDE.md) for details.
+
+### Next Steps
+
+- [Production Operations](#production-operations) - Operating NEXUS in production
+- [Architecture](../architecture/production.md) - Understanding production components
+- [Deployment Guide](../deployment/deployment-guide.md) - Advanced deployment options
 
 ---
 
@@ -759,3 +926,27 @@ loss_fn = NEXUSLoss(
 ---
 
 *Learn by doing. Build with NEXUS.*
+
+---
+
+## Nexus Continuum Service
+
+NEXUS can run as a background service ("daemon") that learns while idle.
+
+### Starting the Service
+```bash
+python nexus/service/server.py
+```
+
+### Dashboard
+Visit `http://localhost:8000/dashboard` to inspect:
+- **Thoughts**: See internal reasoning and refusals.
+- **Resource Usage**: Monitor CPU/RAM (caps at 10% active, 25% idle).
+- **Evolution**: Watch experience grow over time.
+
+### Teacher-Student Training
+If you have [Ollama](https://ollama.com) installed:
+1. Click **Bootstrap Training** in the dashboard.
+2. Nexus will ask Ollama for synthetic data during idle cycles.
+3. This accelerates learning without manual data.
+

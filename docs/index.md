@@ -2,9 +2,9 @@
 
 ## Neural EXploratory Unified Synthesis
 
-**Version**: 1.0.0  
-**Last Updated**: January 2026  
-**Status**: Research Implementation
+**Version**: 2.0.0
+**Last Updated**: January 2026
+**Status**: Production Ready
 
 ---
 
@@ -39,6 +39,15 @@ NEXUS (Neural EXploratory Unified Synthesis) represents a paradigm shift in AI a
 - [Training Pipeline](implementation/training.md)
 - [Evaluation Framework](implementation/evaluation.md)
 - [Optimization Techniques](implementation/optimization.md)
+- [Nexus Continuum Service](implementation/service.md)
+
+### 🚀 Production & Deployment
+- [Production Architecture](architecture/production.md)
+- [Deployment Guide](deployment/deployment-guide.md)
+- [Operations Runbook](operations/runbook.md)
+- [Quick Start Guide](../START.md)
+- [Control Guide](../CONTROL_GUIDE.md)
+- [Raspberry Pi Deployment](../RASPBERRY_PI.md)
 
 ### 📖 API Reference
 - [NEXUSCore API](api/nexus-core.md)
@@ -46,6 +55,8 @@ NEXUS (Neural EXploratory Unified Synthesis) represents a paradigm shift in AI a
 - [World Model API](api/world-model.md)
 - [Reasoning API](api/reasoning.md)
 - [Training API](api/training.md)
+- [CLI Reference (nexusctl)](api/cli-reference.md)
+- [REST API Reference](api/reference.md)
 
 ### 🧪 Examples & Tutorials
 - [Basic Usage](tutorials/basic-usage.md)
@@ -63,8 +74,26 @@ NEXUS (Neural EXploratory Unified Synthesis) represents a paradigm shift in AI a
 | **World Modeling** | JEPA-style abstract representation learning |
 | **Explainable Reasoning** | Neuro-symbolic proofs with symbolic grounding |
 | **Causal Understanding** | Native intervention and counterfactual support |
-| **Adaptive Computation** | Energy-based dynamic depth allocation || **Living System** | Learns and responds in parallel, evolves continuously |
+| **Adaptive Computation** | Energy-based dynamic depth allocation |
+| **Living System** | Learns and responds in parallel, evolves continuously |
 | **Anti-Hallucination** | Refuses politely when uncertain, never makes things up |
+
+### Production Features (v2.0)
+| Feature | Description |
+|---------|-------------|
+| **Real Tokenization** | HuggingFace transformers with special NEXUS tokens |
+| **Checkpoint Persistence** | Atomic saves with SHA256 validation, auto-rotation |
+| **Comprehensive Metrics** | Prometheus export, percentiles, health checks |
+| **Circuit Breaker** | 3-state pattern for graceful degradation |
+| **Memory Management** | Leak detection, auto-cleanup, long-running stability |
+| **CLI Control** | `nexusctl` - start, stop, pause, resume, status, logs |
+| **Web Dashboard** | Real-time monitoring, interaction, visualization |
+| **REST API** | Full control/monitoring via HTTP endpoints |
+| **Remote Access** | SSH tunnel, Tailscale, ngrok support |
+| **Mobile PWA** | Installable dashboard for iOS/Android |
+| **Raspberry Pi Ready** | Optimized edge device deployment |
+| **Teacher-Student** | Bootstrap from Ollama with topic focus |
+
 ## Quick Links
 
 - [GitHub Repository](https://github.com/sutraworks/nexus)

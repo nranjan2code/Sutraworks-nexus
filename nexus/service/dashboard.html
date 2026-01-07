@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus Continuum Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --text-color: #e2e8f0;
+            --card-bg: #1e293b;
+            --accent: #38bdf8;
+            --success: #4ade80;
+            --danger: #f87171;
+            --warning: #fbbf24;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        h2 {
+            margin-top: 0;
+            color: var(--accent);
+            font-size: 1.2rem;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .main {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            height: 100%;
+        }
+
+        /* Stats */
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .stat-val {
+            font-weight: bold;
+            font-family: monospace;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: #334155;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 5px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .mode-indicator {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        .mode-active {
+            background: var(--success);
+            color: #000;
+        }
+
+        .mode-idle {
+            background: var(--warning);
+            color: #000;
+        }
+
+        /* Logs */
+        .log-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            background: #000;
+            padding: 10px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            border: 1px solid #334155;
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+            border-bottom: 1px solid #1e293b;
+            padding-bottom: 2px;
+        }
+
+        .log-time {
+            color: #64748b;
+            margin-right: 8px;
+        }
+
+        /* Chat */
+        .chat-area {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            height: 300px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        .message {
+            padding: 8px 12px;
+            border-radius: 8px;
+            max-width: 80%;
+            margin-bottom: 8px;
+        }
+
+        .user-msg {
+            background: var(--accent);
+            color: #0f172a;
+            align-self: flex-end;
+        }
+
+        .nexus-msg {
+            background: #334155;
+            align-self: flex-start;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+
+        input {
+            flex-grow: 1;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: white;
+        }
+
+        button {
+            padding: 10px 20px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #0f172a;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-warning {
+            background: var(--warning);
+            color: #0f172a;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="sidebar">
+        <!-- Status Card -->
+        <div class="card">
+            <h2>System Status</h2>
+            <div class="stat-row">
+                <span>Daemon:</span>
+                <span id="daemon-status" class="stat-val">...</span>
+            </div>
+            <div class="stat-row">
+                <span>Mode:</span>
+                <span id="governor-mode" class="mode-indicator">...</span>
+            </div>
+
+            <div style="margin-top: 15px;">
+                <div class="stat-row"><span>CPU Usage:</span> <span id="cpu-val" class="stat-val">0%</span></div>
+                <div class="progress-bar">
+                    <div id="cpu-bar" class="progress-fill" style="background: var(--danger)"></div>
+                </div>
+                <div class="stat-row" style="font-size: 0.8rem; color: #64748b;">
+                    Limit: <span id="cpu-limit">0</span>%
+                </div>
+            </div>
+
+            <div style="margin-top: 15px;">
+                <div class="stat-row"><span>Violations:</span> <span id="violation-val" class="stat-val">0</span></div>
+            </div>
+
+            <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+                <button id="btn-pause" class="btn-warning" onclick="control('pause')">Pause</button>
+                <button id="btn-resume" class="btn-success" onclick="control('resume')"
+                    style="background:var(--success); display:none;">Resume</button>
+
+                <input type="text" id="train-topic" placeholder="Focus Topic (Optional)"
+                    style="width: 100%; margin-bottom: 5px; background: #334155; border: none; padding: 8px; color: white;">
+
+                <button id="btn-train-start" class="btn-primary" onclick="control('train_start')"
+                    style="background: #8b5cf6;">Bootstrap Training</button>
+                <button id="btn-train-stop" class="btn-danger" onclick="control('train_stop')"
+                    style="display:none;">Stop Training</button>
+            </div>
+
+            <div style="margin-top: 10px; font-size: 0.8rem; color: #94a3b8;">
+                Teacher: <span id="teacher-status">Checking...</span>
+            </div>
+        </div>
+
+        <!-- Evolution Card -->
+        <div class="card">
+            <h2>Evolution</h2>
+            <div class="stat-row"><span>Age:</span> <span id="age-val" class="stat-val">0s</span></div>
+            <div class="stat-row"><span>Experience:</span> <span id="exp-val" class="stat-val">0.00</span></div>
+            <div class="stat-row"><span>Flow Depth:</span> <span id="depth-val" class="stat-val">0</span></div>
+            <div class="stat-row"><span>Interactions:</span> <span id="int-val" class="stat-val">0</span></div>
+        </div>
+    </div>
+
+    <div class="main">
+        <!-- Chat Interface -->
+        <div class="card" style="flex-grow: 1;">
+            <h2>Interaction</h2>
+            <div id="chat-box" class="chat-area">
+                <div class="message nexus-msg">Hello. I am Nexus Continuum.</div>
+            </div>
+            <div class="input-area">
+                <input type="text" id="user-input" placeholder="Type a message..." onkeypress="handleKey(event)">
+                <button class="btn-primary" onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+
+        <!-- Thought Stream -->
+        <div class="card" style="height: 300px;">
+            <h2>Internal Thought Stream</h2>
+            <div id="log-box" class="log-container">
+                <!-- Logs go here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "http://localhost:8000/api";
+        let isPaused = false;
+
+        async function updateStatus() {
+            try {
+                const res = await fetch(`${API_URL}/status`);
+                const data = await res.json();
+
+                // Update Daemon Status
+                const statusSpan = document.getElementById('daemon-status');
+                statusSpan.textContent = data.daemon_status.toUpperCase();
+                statusSpan.style.color = data.daemon_status === 'running' ? 'var(--success)' : 'var(--warning)';
+
+                isPaused = data.daemon_status === 'paused';
+                document.getElementById('btn-pause').style.display = isPaused ? 'none' : 'block';
+                document.getElementById('btn-resume').style.display = isPaused ? 'block' : 'none';
+
+                // Training Mode Logic (Simple toggle visualization for now)
+                // In a real app we'd get this from the API response
+                const btnTrainStart = document.getElementById('btn-train-start');
+                const btnTrainStop = document.getElementById('btn-train-stop');
+
+                // For now, toggle visibility based on click since API doesn't return state yet (TODO fix)
+                // But let's just show them always enabled/disabled correctly if we had state.
+                // We will rely on user clicking start/stop to toggle visible state manually for now via `control` callback
+                // actually let's just leave them both visible or toggle them?
+
+                // Let's make them toggle-able
+                btnTrainStart.style.display = window.isTraining ? 'none' : 'block';
+                btnTrainStop.style.display = window.isTraining ? 'block' : 'none';
+
+                // Update Governor
+                const gov = data.resources;
+                const modeSpan = document.getElementById('governor-mode');
+                modeSpan.textContent = gov.mode;
+                modeSpan.className = `mode-indicator mode-${gov.mode}`;
+
+                // CPU
+                const cpu = gov.cpu_percent;
+                const limit = gov.mode === 'active' ? gov.active_limit_cpu : gov.idle_limit_cpu;
+                document.getElementById('cpu-val').textContent = cpu.toFixed(1) + '%';
+                document.getElementById('cpu-limit').textContent = limit;
+                document.getElementById('cpu-bar').style.width = Math.min(cpu, 100) + '%';
+                // Color bar red if over limit
+                document.getElementById('cpu-bar').style.backgroundColor = cpu > limit ? 'var(--danger)' : 'var(--accent)';
+
+                document.getElementById('violation-val').textContent = gov.violations;
+
+                // Update Evolution
+                const model = data.model_status;
+                if (model && typeof model === 'object') {
+                    document.getElementById('age-val').textContent = Math.floor(model.age_seconds || 0) + 's';
+                    document.getElementById('exp-val').textContent = (model.experience_factor || 0).toFixed(4);
+                    document.getElementById('depth-val').textContent = (model.average_flow_depth || 0).toFixed(1);
+                    document.getElementById('int-val').textContent = model.total_interactions || 0;
+                }
+
+                // Update Logs
+                const logBox = document.getElementById('log-box');
+                logBox.innerHTML = ''; // Clear and redraw (inefficient but simple)
+                if (data.thoughts) {
+                    data.thoughts.reverse().forEach(log => {
+                        const div = document.createElement('div');
+                        div.className = 'log-entry';
+                        div.textContent = log;
+                        logBox.appendChild(div);
+                    });
+                }
+
+            } catch (e) {
+                console.error("Status fetch error", e);
+                document.getElementById('daemon-status').textContent = "OFFLINE";
+                document.getElementById('daemon-status').style.color = "var(--danger)";
+            }
+        }
+
+        async function control(action) {
+            const payload = { action };
+            if (action === 'train_start') {
+                const topic = document.getElementById('train-topic').value.trim();
+                if (topic) payload.topic = topic;
+            }
+
+            await fetch(`${API_URL}/control`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (action === 'train_start') window.isTraining = true;
+            if (action === 'train_stop') window.isTraining = false;
+            updateStatus();
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('user-input');
+            const text = input.value.trim();
+            if (!text) return;
+
+            // Add user message
+            addMessage(text, 'user-msg');
+            input.value = '';
+
+            // Send
+            try {
+                const res = await fetch(`${API_URL}/interact`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: text })
+                });
+                const data = await res.json();
+                addMessage(data.response, 'nexus-msg');
+            } catch (e) {
+                addMessage("Error: Could not reach Nexus.", 'nexus-msg');
+            }
+        }
+
+        function addMessage(text, className) {
+            const chatBox = document.getElementById('chat-box');
+            const div = document.createElement('div');
+            div.className = `message ${className}`;
+            div.textContent = text;
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function handleKey(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+
+        // Poll every second
+        setInterval(updateStatus, 1000);
+        updateStatus();
+    </script>
+</body>
+
+</html>

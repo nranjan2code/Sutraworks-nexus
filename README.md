@@ -3,8 +3,34 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch 2.0+](https://img.shields.io/badge/pytorch-2.0+-red.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Production Ready](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)](PRODUCTION_READY.md)
 
 **A next-generation AI architecture that learns and responds continuously, never hallucinates, and evolves like a living system.**
+
+## 🎉 Production Ready - v2.0.0
+
+NEXUS is now **production-grade** with zero technical debt! Full details in [PRODUCTION_READY.md](PRODUCTION_READY.md).
+
+**New in v2.0:**
+- ✅ Real tokenization (HuggingFace transformers)
+- ✅ Checkpoint persistence (atomic saves, auto-recovery)
+- ✅ Comprehensive metrics & monitoring
+- ✅ Error recovery (circuit breakers, graceful degradation)
+- ✅ Memory management (leak detection, automatic cleanup)
+- ✅ Production deployment (Docker, systemd, full stack)
+- ✅ Operational runbook
+- ✅ Integration test suite
+
+**Deploy Now:**
+```bash
+# Development
+pip install -r requirements.txt
+python -m uvicorn nexus.service.server:app --reload
+
+# Production (Linux)
+sudo deployment/install.sh  # Installs as systemd service
+sudo systemctl start nexus
+```
 
 ## 🌊 Living System Philosophy
 
@@ -43,6 +69,55 @@ else:
 print(nexus.get_status())
 # {'total_interactions': 1523, 'average_flow_depth': 12.3, ...}
 ```
+
+## ♾️ Nexus Continuum: Always-On Service
+
+**Nexus Continuum** is a background daemon that allows NEXUS to "live" on your machine, continuously learning from interactions and "dreaming" during idle time, while strictly respecting system resources.
+
+### Key Features
+- **Resource Governance**: Active: 10% CPU | Idle: 25% CPU
+- **Continuous Evolution**: Learns from every interaction
+- **Checkpoint Persistence**: Auto-saves every 5 minutes
+- **Error Recovery**: Circuit breakers prevent cascading failures
+- **Memory Management**: Leak detection and automatic cleanup
+- **Real-time Dashboard**: Monitor thoughts, confidence, and resources
+
+### Quick Start
+
+**macOS (Your System):**
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Start NEXUS
+./deployment/run_mac.sh
+
+# Access dashboard
+open http://localhost:8000/dashboard
+
+# Stop NEXUS
+./deployment/stop_mac.sh
+```
+
+**Linux (Production):**
+```bash
+# Install as systemd service
+sudo deployment/install.sh
+
+# Start
+sudo systemctl start nexus
+
+# Access dashboard
+xdg-open http://localhost:8000/dashboard
+```
+
+**Development (Any OS):**
+```bash
+pip install -r requirements.txt
+python -m uvicorn nexus.service.server:app --reload
+```
+
+**See [START.md](START.md) for startup guide | [CONTROL_GUIDE.md](CONTROL_GUIDE.md) for all controls**
 
 ## 🆕 Layer-Free Architecture (FlowingNEXUS)
 

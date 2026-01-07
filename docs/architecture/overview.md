@@ -93,6 +93,51 @@ NEXUS operates as a **living system** that evolves continuously through experien
 
 ---
 
+## Production Infrastructure Layer (v2.0)
+
+NEXUS v2.0 includes a comprehensive production infrastructure for enterprise deployment.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       PRODUCTION INFRASTRUCTURE                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Control Interfaces:                                                        │
+│  ├── nexusctl (CLI): start/stop/pause/resume/status/logs/dashboard         │
+│  ├── Web Dashboard: Real-time monitoring, interaction, controls             │
+│  └── REST API: /api/status, /api/interact, /api/control                    │
+│                                                                             │
+│  Production Components:                                                     │
+│  ├── NEXUSTokenizer: HuggingFace transformers with NEXUS special tokens    │
+│  ├── CheckpointManager: Atomic saves, SHA256 validation, auto-rotation     │
+│  ├── MetricsCollector: Prometheus export, P50/P95/P99, health checks       │
+│  ├── CircuitBreaker: 3-state pattern (CLOSED/OPEN/HALF_OPEN)               │
+│  ├── MemoryManager: Leak detection, auto-cleanup, GC orchestration         │
+│  ├── ResourceGovernor: CPU/RAM limits (Active: 10%, Idle: 25%)             │
+│  └── NexusDaemon: Main orchestrator integrating all components             │
+│                                                                             │
+│  Deployment Modes:                                                          │
+│  ├── Development: uvicorn --reload                                          │
+│  ├── Production: systemd service (Linux) or nexusctl (Mac/Windows)         │
+│  ├── Edge: Raspberry Pi optimized deployment                               │
+│  └── Remote: SSH tunnel, Tailscale, ngrok support                          │
+│                                                                             │
+│  See: docs/architecture/production.md for complete details                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Production Features**:
+- **Zero Technical Debt**: All features implemented to completion
+- **Real Tokenization**: No mock implementations
+- **Checkpoint Persistence**: Crash-safe atomic saves
+- **Comprehensive Metrics**: Production-grade observability
+- **Error Recovery**: Circuit breaker, retry, graceful degradation
+- **Memory Safety**: Long-running stability with leak detection
+- **Resource Governance**: Strict CPU/RAM limits
+- **Multiple Control Interfaces**: CLI, Dashboard, API
+
+---
+
 ## High-Level Architecture
 
 ```
@@ -449,12 +494,18 @@ class NEXUSCore:
 
 ## Further Reading
 
+### Core Architecture
 - [State Space Details](state-space.md)
 - [World Model Details](world-model.md)
 - [Reasoning Details](reasoning.md)
 - [Energy Module Details](energy.md)
 - [Causal Engine Details](causal.md)
 - [Integration Layer](integration.md)
+
+### Production Infrastructure (v2.0)
+- [Production Architecture](production.md) - Complete production infrastructure guide
+- [Deployment Guide](../deployment/deployment-guide.md)
+- [Operations Runbook](../operations/runbook.md)
 
 ---
 

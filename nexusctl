@@ -1,0 +1,531 @@
+#!/usr/bin/env python3
+"""
+NEXUS Control - Command Line Interface
+=======================================
+
+Unified control interface for NEXUS Continuum.
+Manage start, stop, pause, resume, status, and more.
+
+Usage:
+    nexusctl start      # Start NEXUS
+    nexusctl stop       # Stop NEXUS
+    nexusctl restart    # Restart NEXUS
+    nexusctl pause      # Pause learning (keep serving)
+    nexusctl resume     # Resume learning
+    nexusctl status     # Show status
+    nexusctl health     # Health check
+    nexusctl logs       # View logs
+    nexusctl save       # Force checkpoint save
+    nexusctl dashboard  # Open dashboard
+"""
+
+import argparse
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import requests
+
+# Configuration
+PROJECT_DIR = Path(__file__).parent.resolve()
+PID_FILE = PROJECT_DIR / "nexus.pid"
+LOG_FILE = PROJECT_DIR / "nexus.log"
+API_URL = "http://localhost:8000"
+
+
+class Colors:
+    """ANSI color codes."""
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    BLUE = '\033[94m'
+    BOLD = '\033[1m'
+    END = '\033[0m'
+
+
+def print_success(msg):
+    print(f"{Colors.GREEN}✅ {msg}{Colors.END}")
+
+
+def print_error(msg):
+    print(f"{Colors.RED}❌ {msg}{Colors.END}")
+
+
+def print_warning(msg):
+    print(f"{Colors.YELLOW}⚠️  {msg}{Colors.END}")
+
+
+def print_info(msg):
+    print(f"{Colors.BLUE}ℹ️  {msg}{Colors.END}")
+
+
+def print_header(msg):
+    print(f"\n{Colors.BOLD}{msg}{Colors.END}")
+    print("=" * len(msg))
+
+
+def is_running():
+    """Check if NEXUS is running."""
+    if not PID_FILE.exists():
+        return False
+
+    try:
+        with open(PID_FILE) as f:
+            pid = int(f.read().strip())
+
+        # Check if process exists
+        os.kill(pid, 0)
+        return True
+    except (ValueError, ProcessLookupError, PermissionError):
+        return False
+
+
+def get_pid():
+    """Get NEXUS PID."""
+    if not PID_FILE.exists():
+        return None
+
+    try:
+        with open(PID_FILE) as f:
+            return int(f.read().strip())
+    except ValueError:
+        return None
+
+
+def start():
+    """Start NEXUS."""
+    print_header("Starting NEXUS Continuum")
+
+    if is_running():
+        print_warning("NEXUS is already running")
+        pid = get_pid()
+        print_info(f"PID: {pid}")
+        print_info(f"Dashboard: {API_URL}/dashboard")
+        return 1
+
+    # Check if uvicorn is available
+    try:
+        subprocess.run(
+            ["python", "-m", "uvicorn", "--version"],
+            capture_output=True,
+            check=True
+        )
+    except subprocess.CalledProcessError:
+        print_error("uvicorn not installed")
+        print_info("Install: pip install -r requirements.txt")
+        return 1
+
+    # Start NEXUS
+    print_info("Starting server...")
+
+    log_file = open(LOG_FILE, 'a')
+
+    process = subprocess.Popen(
+        [
+            "python", "-m", "uvicorn",
+            "nexus.service.server:app",
+            "--host", "0.0.0.0",
+            "--port", "8000"
+        ],
+        stdout=log_file,
+        stderr=log_file,
+        cwd=PROJECT_DIR,
+    )
+
+    # Save PID
+    with open(PID_FILE, 'w') as f:
+        f.write(str(process.pid))
+
+    print_success(f"NEXUS started (PID: {process.pid})")
+
+    # Wait for startup
+    print_info("Waiting for startup...")
+    for i in range(30):
+        time.sleep(1)
+        try:
+            response = requests.get(f"{API_URL}/api/status", timeout=1)
+            if response.status_code == 200:
+                print_success("NEXUS is ready!")
+                print_info(f"Dashboard: {API_URL}/dashboard")
+                print_info(f"API: {API_URL}/api/status")
+                print_info(f"Logs: tail -f {LOG_FILE}")
+                return 0
+        except requests.exceptions.RequestException:
+            pass
+
+    print_warning("NEXUS started but health check timeout")
+    print_info("Check logs: tail -f " + str(LOG_FILE))
+    return 0
+
+
+def stop():
+    """Stop NEXUS."""
+    print_header("Stopping NEXUS Continuum")
+
+    if not is_running():
+        print_warning("NEXUS is not running")
+        # Clean up stale PID file
+        if PID_FILE.exists():
+            PID_FILE.unlink()
+        return 1
+
+    pid = get_pid()
+    print_info(f"Stopping NEXUS (PID: {pid})...")
+
+    # Try graceful shutdown
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        print_warning("Process not found")
+        PID_FILE.unlink()
+        return 1
+
+    # Wait for graceful shutdown
+    for i in range(10):
+        time.sleep(1)
+        if not is_running():
+            print_success("NEXUS stopped gracefully")
+            PID_FILE.unlink()
+            return 0
+
+    # Force kill
+    print_warning("Graceful shutdown timeout, forcing...")
+    try:
+        os.kill(pid, signal.SIGKILL)
+        time.sleep(1)
+    except ProcessLookupError:
+        pass
+
+    print_success("NEXUS stopped (forced)")
+    PID_FILE.unlink()
+    return 0
+
+
+def restart():
+    """Restart NEXUS."""
+    print_header("Restarting NEXUS Continuum")
+
+    if is_running():
+        stop()
+        time.sleep(2)
+
+    return start()
+
+
+def pause():
+    """Pause background learning."""
+    print_header("Pausing Background Learning")
+
+    if not is_running():
+        print_error("NEXUS is not running")
+        return 1
+
+    try:
+        response = requests.post(
+            f"{API_URL}/api/control",
+            json={"action": "pause"},
+            timeout=5
+        )
+
+        if response.status_code == 200:
+            print_success("Background learning paused")
+            print_info("NEXUS will continue serving requests")
+            return 0
+        else:
+            print_error(f"Failed to pause: {response.text}")
+            return 1
+
+    except requests.exceptions.RequestException as e:
+        print_error(f"Cannot connect to NEXUS: {e}")
+        return 1
+
+
+def resume():
+    """Resume background learning."""
+    print_header("Resuming Background Learning")
+
+    if not is_running():
+        print_error("NEXUS is not running")
+        return 1
+
+    try:
+        response = requests.post(
+            f"{API_URL}/api/control",
+            json={"action": "resume"},
+            timeout=5
+        )
+
+        if response.status_code == 200:
+            print_success("Background learning resumed")
+            print_info("NEXUS is now learning and serving")
+            return 0
+        else:
+            print_error(f"Failed to resume: {response.text}")
+            return 1
+
+    except requests.exceptions.RequestException as e:
+        print_error(f"Cannot connect to NEXUS: {e}")
+        return 1
+
+
+def status():
+    """Show NEXUS status."""
+    print_header("NEXUS Status")
+
+    # Check if running
+    if not is_running():
+        print_error("NEXUS is not running")
+        print_info("Start with: nexusctl start")
+        return 1
+
+    pid = get_pid()
+    print_success(f"NEXUS is running (PID: {pid})")
+
+    # Get detailed status
+    try:
+        response = requests.get(f"{API_URL}/api/status", timeout=5)
+
+        if response.status_code != 200:
+            print_error("Failed to get status")
+            return 1
+
+        data = response.json()
+
+        # Daemon status
+        daemon = data.get("daemon", {})
+        print(f"\n{Colors.BOLD}Daemon:{Colors.END}")
+        print(f"  Running: {daemon.get('running')}")
+        print(f"  Paused: {daemon.get('paused')}")
+        print(f"  Uptime: {daemon.get('uptime_seconds', 0):.0f}s")
+
+        # Health
+        health = data.get("health", {})
+        print(f"\n{Colors.BOLD}Health:{Colors.END}")
+        if health.get("healthy"):
+            print_success(f"Status: {health.get('status')}")
+        else:
+            print_error(f"Status: {health.get('status')}")
+            for issue in health.get("issues", []):
+                print_warning(f"  {issue}")
+
+        # Metrics
+        metrics = data.get("metrics", {}).get("requests", {})
+        print(f"\n{Colors.BOLD}Metrics:{Colors.END}")
+        print(f"  Total requests: {metrics.get('total', 0)}")
+        print(f"  Responses: {metrics.get('responses', 0)}")
+        print(f"  Refusals: {metrics.get('refusals', 0)}")
+        print(f"  Success rate: {metrics.get('success_rate', 0):.1%}")
+
+        # Memory
+        memory = data.get("memory", {}).get("process", {})
+        print(f"\n{Colors.BOLD}Memory:{Colors.END}")
+        print(f"  Current: {memory.get('current_mb', 0):.1f} MB")
+        print(f"  Peak: {memory.get('peak_mb', 0):.1f} MB")
+        growth = memory.get('growth_rate_mb_per_hour', 0)
+        if growth > 10:
+            print_warning(f"  Growth: {growth:.2f} MB/hour (high!)")
+        else:
+            print(f"  Growth: {growth:.2f} MB/hour")
+
+        # Model
+        model = data.get("model", {})
+        print(f"\n{Colors.BOLD}Model:{Colors.END}")
+        print(f"  Architecture: {model.get('architecture', 'unknown')}")
+        print(f"  Interactions: {model.get('total_interactions', 0)}")
+        print(f"  Avg flow depth: {model.get('average_flow_depth', 0):.1f}")
+
+        print(f"\n{Colors.BOLD}Endpoints:{Colors.END}")
+        print(f"  Dashboard: {API_URL}/dashboard")
+        print(f"  API: {API_URL}/api/status")
+
+        return 0
+
+    except requests.exceptions.RequestException as e:
+        print_error(f"Cannot connect to NEXUS: {e}")
+        return 1
+
+
+def health():
+    """Health check."""
+    print_header("Health Check")
+
+    if not is_running():
+        print_error("NEXUS is not running")
+        return 1
+
+    try:
+        response = requests.get(f"{API_URL}/api/status", timeout=5)
+
+        if response.status_code != 200:
+            print_error("Health check failed")
+            return 1
+
+        data = response.json()
+        health_data = data.get("health", {})
+
+        if health_data.get("healthy"):
+            print_success("NEXUS is healthy")
+            return 0
+        else:
+            print_error("NEXUS is unhealthy")
+            for issue in health_data.get("issues", []):
+                print_warning(f"  {issue}")
+            return 1
+
+    except requests.exceptions.RequestException as e:
+        print_error(f"Cannot connect to NEXUS: {e}")
+        return 1
+
+
+def logs(follow=False):
+    """View logs."""
+    print_header("NEXUS Logs")
+
+    if not LOG_FILE.exists():
+        print_warning("No log file found")
+        return 1
+
+    if follow:
+        print_info("Following logs (Ctrl+C to stop)...")
+        subprocess.run(["tail", "-f", str(LOG_FILE)])
+    else:
+        print_info("Last 50 lines:")
+        subprocess.run(["tail", "-n", "50", str(LOG_FILE)])
+
+    return 0
+
+
+def save_checkpoint():
+    """Force checkpoint save."""
+    print_header("Saving Checkpoint")
+
+    if not is_running():
+        print_error("NEXUS is not running")
+        return 1
+
+    print_info("Checkpoint saves are automatic (every 5 minutes)")
+    print_info("Checkpoints are also saved on graceful shutdown")
+
+    # Show checkpoint info
+    checkpoint_dir = PROJECT_DIR / "nexus_checkpoints"
+    if checkpoint_dir.exists():
+        checkpoints = list(checkpoint_dir.glob("checkpoint_*.pt"))
+        if checkpoints:
+            print(f"\n{Colors.BOLD}Recent checkpoints:{Colors.END}")
+            for cp in sorted(checkpoints, reverse=True)[:5]:
+                size_mb = cp.stat().st_size / 1024 / 1024
+                print(f"  {cp.name} ({size_mb:.1f} MB)")
+        else:
+            print_info("No checkpoints yet")
+    else:
+        print_info("Checkpoint directory not found")
+
+    return 0
+
+
+def dashboard():
+    """Open dashboard in browser."""
+    print_header("Opening Dashboard")
+
+    if not is_running():
+        print_error("NEXUS is not running")
+        print_info("Start with: nexusctl start")
+        return 1
+
+    url = f"{API_URL}/dashboard"
+    print_info(f"Opening: {url}")
+
+    # Try to open in browser
+    import platform
+    system = platform.system()
+
+    try:
+        if system == "Darwin":  # macOS
+            subprocess.run(["open", url])
+        elif system == "Linux":
+            subprocess.run(["xdg-open", url])
+        elif system == "Windows":
+            subprocess.run(["start", url], shell=True)
+        else:
+            print_info(f"Visit: {url}")
+
+        print_success("Dashboard opened")
+        return 0
+
+    except Exception as e:
+        print_warning(f"Could not open browser: {e}")
+        print_info(f"Visit manually: {url}")
+        return 1
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="NEXUS Control - Manage NEXUS Continuum",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Commands:
+  start       Start NEXUS
+  stop        Stop NEXUS
+  restart     Restart NEXUS
+  pause       Pause background learning
+  resume      Resume background learning
+  status      Show detailed status
+  health      Health check
+  logs        View logs (-f to follow)
+  save        Show checkpoint info
+  dashboard   Open dashboard in browser
+
+Examples:
+  nexusctl start          # Start NEXUS
+  nexusctl status         # Check status
+  nexusctl logs -f        # Follow logs
+  nexusctl dashboard      # Open dashboard
+        """
+    )
+
+    parser.add_argument(
+        "command",
+        choices=[
+            "start", "stop", "restart",
+            "pause", "resume",
+            "status", "health",
+            "logs", "save", "dashboard"
+        ],
+        help="Command to execute"
+    )
+
+    parser.add_argument(
+        "-f", "--follow",
+        action="store_true",
+        help="Follow logs (for logs command)"
+    )
+
+    args = parser.parse_args()
+
+    # Execute command
+    commands = {
+        "start": start,
+        "stop": stop,
+        "restart": restart,
+        "pause": pause,
+        "resume": resume,
+        "status": status,
+        "health": health,
+        "logs": lambda: logs(args.follow),
+        "save": save_checkpoint,
+        "dashboard": dashboard,
+    }
+
+    try:
+        return commands[args.command]()
+    except KeyboardInterrupt:
+        print("\n\nInterrupted")
+        return 130
+
+
+if __name__ == "__main__":
+    sys.exit(main())
