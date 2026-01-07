@@ -25,12 +25,13 @@ from typing import Any, Dict, List, Optional
 import torch
 
 from nexus.core.living import LivingNEXUS, create_living_nexus
+from nexus.core.flowing import DynamicsDivergenceError
 from nexus.core.tokenizer import NEXUSTokenizer
 from nexus.service.checkpoint import CheckpointManager, CheckpointMetadata
 from nexus.service.memory_manager import MemoryConfig, MemoryManager
 from nexus.service.metrics import HealthCheck, MetricsCollector
 from nexus.service.resilience import CircuitBreaker, GracefulDegradation
-from nexus.service.resource import ResourceGovernor
+from nexus.service.resource import ResourceGovernor, ResourceExhaustedError
 from nexus.training.teacher import OllamaTeacher
 
 logger = logging.getLogger("nexus.daemon")
@@ -134,6 +135,7 @@ class NexusDaemon:
                 size="small",
                 architecture="flowing",
                 start_fresh=True,
+                vocab_size=self.tokenizer.vocab_size,
             )
 
         # Start daemon thread
@@ -217,6 +219,12 @@ class NexusDaemon:
         else:
             logger.info(f"Training mode: {enabled}")
 
+    def reload_teacher(self) -> None:
+        """Reload teacher configuration from environment."""
+        logger.info("Reloading Ollama Teacher configuration...")
+        self.teacher = OllamaTeacher()
+        logger.info(f"Teacher reloaded: {self.teacher.base_url} / {self.teacher.model}")
+
     def _daemon_loop(self) -> None:
         """Main event loop."""
         logger.info("Daemon loop started")
@@ -275,11 +283,23 @@ class NexusDaemon:
             input_ids = self.tokenizer.encode(prompt, max_length=512)
             batch = {"input_ids": input_ids.unsqueeze(0)}
 
+            # Tokenize input (REAL tokenization!)
+            input_ids = self.tokenizer.encode(prompt, max_length=512)
+            batch = {"input_ids": input_ids.unsqueeze(0)}
+
+            # Disable gradient for Flowing architecture (no backward pass yet)
+            # This prevents memory leak from graph building
+            use_grad = self.nexus.architecture != "flowing"
+
             # Process through circuit breaker
             def inference():
-                return self.nexus.interact(
-                    batch, learn=True, domain="user_interaction"
-                )
+                with torch.set_grad_enabled(use_grad):
+                    return self.nexus.interact(
+                        batch,
+                        learn=use_grad,  # Only learn if we have a backward pass mechanism
+                        domain="user_interaction",
+                        step_callback=lambda: self.resource_governor.check_and_throttle(),
+                    )
 
             result = self.inference_breaker.call(inference)
 
@@ -314,14 +334,33 @@ class NexusDaemon:
 
             result_queue.put(response_text)
 
+        except DynamicsDivergenceError as e:
+            logger.critical(f"MODEL DIVERGENCE DETECTED: {e}")
+            logger.critical("Circuit breaker should open to prevent further bad inference.")
+
+            # Record error (fail hard)
+            latency = time.time() - start_time
+            self.metrics.record_request(latency=latency, responded=False, error=True)
+
+            # Graceful degradation with specific message
+            fallback = GracefulDegradation.fallback_response("system_unavailable")
+            result_queue.put("System Error: Neural dynamics diverged. Protection system activated.")
+
+        except ResourceExhaustedError as e:
+            logger.critical(f"RESOURCE EXHAUSTED: {e}")
+            self.metrics.record_request(
+                latency=time.time() - start_time, responded=False, error=True
+            )
+            result_queue.put(
+                "System Error: Resource limits exceeded. Operation aborted for safety."
+            )
+
         except Exception as e:
             logger.error(f"Error handling request: {e}", exc_info=True)
 
             # Record error
             latency = time.time() - start_time
-            self.metrics.record_request(
-                latency=latency, responded=False, error=True
-            )
+            self.metrics.record_request(latency=latency, responded=False, error=True)
 
             # Graceful degradation
             fallback = GracefulDegradation.fallback_response("system_unavailable")
@@ -333,21 +372,26 @@ class NexusDaemon:
 
         try:
             # Teacher-student learning
-            if self.training_mode or (
-                torch.rand(1).item() < 0.3 and self.teacher.available
-            ):
+            if self.training_mode or (torch.rand(1).item() < 0.3 and self.teacher.available):
                 self._learn_from_teacher(self.training_topic)
                 return
 
             # Self-supervised dreaming
             dream_text = "[DREAM] Exploring latent space..."
             dream_ids = self.tokenizer.encode(dream_text, max_length=16)
+            # Self-supervised dreaming
+            dream_text = "[DREAM] Exploring latent space..."
+            dream_ids = self.tokenizer.encode(dream_text, max_length=16)
             batch = {"input_ids": dream_ids.unsqueeze(0)}
+
+            # Disable gradient for Flowing architecture
+            use_grad = self.nexus.architecture != "flowing"
 
             start_time = time.time()
 
             def learning():
-                return self.nexus.interact(batch, learn=True, domain="dreaming")
+                with torch.set_grad_enabled(use_grad):
+                    return self.nexus.interact(batch, learn=use_grad, domain="dreaming")
 
             result = self.learning_breaker.call(learning)
 
@@ -360,8 +404,7 @@ class NexusDaemon:
                 )
 
                 self._log_thought(
-                    f"Dream: depth={result.flow_depth}, "
-                    f"energy={result.flow_energy:.4f}"
+                    f"Dream: depth={result.flow_depth}, " f"energy={result.flow_energy:.4f}"
                 )
 
         except Exception as e:
@@ -384,9 +427,7 @@ class NexusDaemon:
         start_time = time.time()
 
         try:
-            result = self.nexus.interact(
-                batch, learn=True, domain="teacher_distillation"
-            )
+            result = self.nexus.interact(batch, learn=True, domain="teacher_distillation")
 
             latency = time.time() - start_time
             self.metrics.record_learning_cycle(latency=latency, num_samples=1)
@@ -430,16 +471,15 @@ class NexusDaemon:
         metadata = checkpoint.get("metadata", {})
 
         logger.info(f"Loading checkpoint: {metadata.get('checkpoint_id')}")
-        logger.info(
-            f"  Interactions: {metadata.get('total_interactions', 0)}"
-        )
+        logger.info(f"  Interactions: {metadata.get('total_interactions', 0)}")
         logger.info(f"  Architecture: {metadata.get('architecture', 'unknown')}")
 
-        # Create fresh model
+        # Create fresh model with correct vocab size
         nexus = create_living_nexus(
             size="small",
             architecture=metadata.get("architecture", "flowing"),
             start_fresh=True,
+            vocab_size=self.tokenizer.vocab_size,
         )
 
         # Load states
@@ -468,13 +508,9 @@ class NexusDaemon:
 
         # Trim replay buffer (if using layered architecture)
         if self.nexus.learner:
-            stats = self.memory_manager.cleanup_replay_buffer(
-                self.nexus.learner.replay_buffer
-            )
+            stats = self.memory_manager.cleanup_replay_buffer(self.nexus.learner.replay_buffer)
             if stats["cleaned"] > 0:
-                logger.info(
-                    f"Cleaned replay buffer: {stats['cleaned']} entries removed"
-                )
+                logger.info(f"Cleaned replay buffer: {stats['cleaned']} entries removed")
 
     def _log_thought(self, thought: str) -> None:
         """Log a thought to history."""

@@ -114,7 +114,7 @@ class MetricsCollector:
 
         # Domain tracking
         self.domain_counts: Counter = Counter()
-        self.domain_confidence: Dict[str, List[float]] = {}
+        self.domain_confidence: Dict[str, Deque[float]] = {}
 
         # Resource tracking
         self.peak_memory_mb = 0.0
@@ -195,6 +195,8 @@ class MetricsCollector:
             if confidence is not None:
                 if domain not in self.domain_confidence:
                     self.domain_confidence[domain] = []
+                if domain not in self.domain_confidence:
+                    self.domain_confidence[domain] = deque(maxlen=self.window_size)
                 self.domain_confidence[domain].append(confidence)
 
     def record_learning_cycle(
@@ -308,9 +310,7 @@ class MetricsCollector:
             }
 
         if self.flow_energies:
-            flow_metrics["average_energy"] = sum(self.flow_energies) / len(
-                self.flow_energies
-            )
+            flow_metrics["average_energy"] = sum(self.flow_energies) / len(self.flow_energies)
 
         # Confidence metrics
         confidence_metrics = {}
@@ -332,7 +332,6 @@ class MetricsCollector:
                 ],
             }
 
-            # Domain-specific confidence
             if self.domain_confidence:
                 domain_metrics["domain_confidence"] = {
                     domain: sum(scores) / len(scores)
@@ -354,9 +353,7 @@ class MetricsCollector:
                 "errors": self.total_errors,
                 "success_rate": request_stats.success_rate,
                 "refusal_rate": (
-                    self.total_refusals / self.total_requests
-                    if self.total_requests > 0
-                    else 0.0
+                    self.total_refusals / self.total_requests if self.total_requests > 0 else 0.0
                 ),
                 "rate_per_second": request_stats.rate_per_second,
             },
@@ -398,9 +395,7 @@ class MetricsCollector:
                 "peak_cpu_percent": self.peak_cpu_percent,
                 "peak_gpu_memory_mb": self.peak_gpu_memory_mb,
                 "current_memory_mb": (
-                    self.process.memory_info().rss / 1024 / 1024
-                    if self.process
-                    else 0.0
+                    self.process.memory_info().rss / 1024 / 1024 if self.process else 0.0
                 ),
                 "current_cpu_percent": (
                     self.process.cpu_percent(interval=None) if self.process else 0.0
@@ -424,42 +419,26 @@ class MetricsCollector:
         metrics.append(f"nexus_responses_total {summary['requests']['responses']}")
         metrics.append(f"nexus_refusals_total {summary['requests']['refusals']}")
         metrics.append(f"nexus_errors_total {summary['requests']['errors']}")
-        metrics.append(
-            f"nexus_request_rate {summary['requests']['rate_per_second']}"
-        )
+        metrics.append(f"nexus_request_rate {summary['requests']['rate_per_second']}")
 
         # Latency metrics
-        metrics.append(
-            f"nexus_request_latency_p50_ms {summary['latency']['request']['p50_ms']}"
-        )
-        metrics.append(
-            f"nexus_request_latency_p95_ms {summary['latency']['request']['p95_ms']}"
-        )
-        metrics.append(
-            f"nexus_request_latency_p99_ms {summary['latency']['request']['p99_ms']}"
-        )
+        metrics.append(f"nexus_request_latency_p50_ms {summary['latency']['request']['p50_ms']}")
+        metrics.append(f"nexus_request_latency_p95_ms {summary['latency']['request']['p95_ms']}")
+        metrics.append(f"nexus_request_latency_p99_ms {summary['latency']['request']['p99_ms']}")
 
         # Learning metrics
-        metrics.append(
-            f"nexus_learning_cycles_total {summary['learning']['total_cycles']}"
-        )
-        metrics.append(
-            f"nexus_learning_samples_total {summary['learning']['total_samples']}"
-        )
+        metrics.append(f"nexus_learning_cycles_total {summary['learning']['total_cycles']}")
+        metrics.append(f"nexus_learning_samples_total {summary['learning']['total_samples']}")
 
         # Flow metrics
         if summary["flow"]:
-            metrics.append(
-                f"nexus_flow_depth_average {summary['flow'].get('average_depth', 0)}"
-            )
+            metrics.append(f"nexus_flow_depth_average {summary['flow'].get('average_depth', 0)}")
             metrics.append(
                 f"nexus_flow_convergence_rate {summary['flow'].get('convergence_rate', 0)}"
             )
 
         # Resource metrics
-        metrics.append(
-            f"nexus_memory_peak_mb {summary['resources']['peak_memory_mb']}"
-        )
+        metrics.append(f"nexus_memory_peak_mb {summary['resources']['peak_memory_mb']}")
         metrics.append(f"nexus_cpu_peak_percent {summary['resources']['peak_cpu_percent']}")
 
         return "\n".join(metrics)
@@ -548,9 +527,7 @@ class HealthCheck:
         refusal_rate = summary["requests"]["refusal_rate"]
         latency_p95 = summary["latency"]["request"]["p95_ms"]
 
-        convergence_rate = (
-            summary["flow"].get("convergence_rate", 1.0) if summary["flow"] else 1.0
-        )
+        convergence_rate = summary["flow"].get("convergence_rate", 1.0) if summary["flow"] else 1.0
 
         # Determine health status
         issues = []
@@ -559,14 +536,10 @@ class HealthCheck:
             issues.append(f"High error rate: {error_rate:.2%} > {self.max_error_rate:.2%}")
 
         if refusal_rate > self.max_refusal_rate:
-            issues.append(
-                f"High refusal rate: {refusal_rate:.2%} > {self.max_refusal_rate:.2%}"
-            )
+            issues.append(f"High refusal rate: {refusal_rate:.2%} > {self.max_refusal_rate:.2%}")
 
         if latency_p95 > self.max_latency_p95_ms:
-            issues.append(
-                f"High latency: {latency_p95:.0f}ms > {self.max_latency_p95_ms:.0f}ms"
-            )
+            issues.append(f"High latency: {latency_p95:.0f}ms > {self.max_latency_p95_ms:.0f}ms")
 
         if convergence_rate < self.min_convergence_rate:
             issues.append(

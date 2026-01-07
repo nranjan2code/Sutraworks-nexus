@@ -10,13 +10,19 @@ Serves:
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Any, Optional
 import logging
 import os
 import uvicorn
+import math
+import json
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from nexus.service.daemon import NexusDaemon
 
@@ -26,6 +32,30 @@ logger = logging.getLogger("nexus.server")
 
 # Global Daemon Instance
 daemon = NexusDaemon()
+
+
+class SafeJSONResponse(JSONResponse):
+    """JSONResponse that replaces NaN/Inf with None to allow valid JSON serialization."""
+
+    def render(self, content: Any) -> bytes:
+        def clean_float(v):
+            if isinstance(v, float):
+                if math.isnan(v) or math.isinf(v):
+                    return None
+            return v
+
+        # We do a recursive clean for common structures
+        # For a truly robust solution, we might want to use a custom json.JSONEncoder
+        def clean_structure(obj):
+            if isinstance(obj, dict):
+                return {k: clean_structure(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [clean_structure(v) for v in obj]
+            elif isinstance(obj, float):
+                return clean_float(obj)
+            return obj
+
+        return super().render(clean_structure(content))
 
 
 @asynccontextmanager
@@ -39,7 +69,7 @@ async def lifespan(app: FastAPI):
     daemon.shutdown()
 
 
-app = FastAPI(title="Nexus Continuum", lifespan=lifespan)
+app = FastAPI(title="Nexus Continuum", lifespan=lifespan, default_response_class=SafeJSONResponse)
 
 
 # Models
@@ -52,7 +82,57 @@ class ControlRequest(BaseModel):
     topic: Optional[str] = None
 
 
+class ConfigRequest(BaseModel):
+    ollama_host: str
+    ollama_model: str
+
+
 # API Endpoints
+@app.get("/api/config")
+async def get_config():
+    """Get current configuration."""
+    return {
+        "ollama_host": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
+        "ollama_model": os.getenv("OLLAMA_MODEL", "llama2"),
+    }
+
+
+@app.post("/api/config")
+async def set_config(req: ConfigRequest):
+    """Update configuration and reload daemon."""
+    # Update env vars for this process
+    os.environ["OLLAMA_HOST"] = req.ollama_host
+    os.environ["OLLAMA_MODEL"] = req.ollama_model
+
+    # Persist to .env file (simple append/replace for now)
+    # A robust solution would use a proper parser, but we'll do simple write
+    with open(".env", "w") as f:
+        f.write(f"OLLAMA_HOST={req.ollama_host}\n")
+        f.write(f"OLLAMA_MODEL={req.ollama_model}\n")
+
+    # Reload Daemon Component
+    daemon.reload_teacher()
+
+    return {"status": "updated", "config": req.dict()}
+
+
+@app.get("/api/ollama/tags")
+async def get_ollama_tags():
+    """Proxy to discover available Ollama models."""
+    host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    try:
+        # Use httpx or requests (requests is sync but simple for now)
+        import requests
+
+        resp = requests.get(f"{host}/api/tags", timeout=5)
+        if resp.status_code == 200:
+            return resp.json()
+        return {"models": []}
+    except Exception as e:
+        logger.error(f"Failed to fetch Ollama tags: {e}")
+        return {"error": str(e), "models": []}
+
+
 @app.get("/api/status")
 async def get_status():
     """Get full system status for dashboard."""
@@ -69,8 +149,12 @@ async def interact(req: InteractRequest):
     # This calls the daemon which queues the request
     # Note: daemon.submit_request is currently blocking in our simplistic impl
     # In a real async app we'd await a future.
-    response = daemon.submit_request(req.prompt)
-    return {"response": response}
+    try:
+        response = daemon.submit_request(req.prompt)
+        return {"response": response}
+    except Exception as e:
+        logger.error(f"Error processing request: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/control")

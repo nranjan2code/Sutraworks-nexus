@@ -1,0 +1,18 @@
+{
+  "checkpoint_id": "20260107_143542",
+  "timestamp": 1767776742.441461,
+  "version": "1.0",
+  "architecture": "flowing",
+  "model_size": "small",
+  "total_interactions": 0,
+  "total_learning_steps": 0,
+  "total_responses": 0,
+  "total_refusals": 0,
+  "average_confidence": 0.0,
+  "average_flow_depth": null,
+  "convergence_rate": 0.0,
+  "pytorch_version": "",
+  "device": "cpu",
+  "file_size_bytes": 116493845,
+  "checksum": "de9ab2fc849cd7e0812391544167aedc6707f872fb32edd0831eaa02a57c4143"
+}

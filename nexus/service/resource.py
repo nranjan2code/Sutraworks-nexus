@@ -18,6 +18,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("nexus.governor")
 
 
+class ResourceExhaustedError(Exception):
+    """Raised when resources are critically exhausted and operation must abort."""
+
+    pass
+
+
 @dataclass
 class ResourceConfig:
     # CPU Usage Limits (percentage)
@@ -25,8 +31,9 @@ class ResourceConfig:
     idle_cpu_limit: float = 25.0
 
     # RAM Usage Limits (percentage of total system memory)
-    active_ram_limit: float = 10.0
-    idle_ram_limit: float = 25.0
+    active_ram_limit: float = 30.0
+    idle_ram_limit: float = 20.0
+    critical_ram_limit: float = 30.0  # Emergency abort threshold
 
     # Control intervals
     check_interval: float = 1.0  # Seconds between checks
@@ -49,8 +56,8 @@ class ResourceGovernor:
 
     def check_and_throttle(self):
         """
-        Check resource usage and sleep if necessary to bring average usage down.
-        This should be called inside the main processing loops.
+        Check resource usage and sleep if necessary.
+        Forces GC if RAM is high. Raises exception if critical.
         """
         # Determine limits based on mode
         cpu_limit = (
@@ -60,35 +67,49 @@ class ResourceGovernor:
             self.config.active_ram_limit if self.mode == "active" else self.config.idle_ram_limit
         )
 
-        # Check current usage
-        # interval=None is non-blocking but might be spiky.
-        # For a background daemon, we might want a small interval or rely on OS average.
-        # Here we use a small interval for more accurate instant reading, but it blocks.
-        # To avoid blocking the actual work too much, we use interval=None and average manually if needed.
-        # But psutil.cpu_percent(interval=None) returns 0.0 on first call.
         try:
-            current_cpu = self.process.cpu_percent(interval=0.1)
+            current_cpu = self.process.cpu_percent(interval=None)
+            # Basic smoothing to avoid blocking call
+            if current_cpu <= 0.0:
+                # fallback to brief blocking check if we have no prior sample
+                current_cpu = self.process.cpu_percent(interval=0.05)
         except Exception:
             current_cpu = 0.0
 
         current_ram_percent = self.process.memory_percent()
 
+        # 1. Critical Check (Emergency Abort)
+        if current_ram_percent > self.config.critical_ram_limit:
+            import gc
+
+            gc.collect()  # Try to save it first
+            new_ram = self.process.memory_percent()
+            if new_ram > self.config.critical_ram_limit:
+                logger.warning(
+                    f"CRITICAL RAM USAGE: {new_ram:.1f}% > {self.config.critical_ram_limit}%. Throttling."
+                )
+                # No abort, just let it fall through to violation logic which throttles
+
         violation = False
 
-        # CPU Violation
+        # 2. CPU Violation
         if current_cpu > cpu_limit:
             violation = True
             logger.debug(f"CPU Violation: {current_cpu:.1f}% > {cpu_limit}%")
 
-        # RAM Violation (Harder to fix instantly, but we can pause allocation/learning)
+        # 3. RAM Violation
         if current_ram_percent > ram_limit:
             violation = True
-            logger.warning(f"RAM Violation: {current_ram_percent:.1f}% > {ram_limit}%")
+            # Active Reclamation
+            import gc
+
+            cleaned = gc.collect()
+            if cleaned > 0:
+                logger.debug(f"Governor forced GC: collected {cleaned} objects")
 
         if violation:
             self._consecutive_violations += 1
             # Sleep to lower average CPU usage
-            # The more we violate, the longer we sleep
             sleep_time = 0.1 * (self.config.backoff_factor**self._consecutive_violations)
             sleep_time = min(sleep_time, 5.0)  # Cap sleep at 5 seconds
 

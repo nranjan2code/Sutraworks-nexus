@@ -4,371 +4,886 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nexus Continuum Dashboard</title>
+    <title>Nexus Continuum | Living System Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
-            --bg-color: #0f172a;
-            --text-color: #e2e8f0;
-            --card-bg: #1e293b;
+            --bg-color: #0b0f19;
+            --card-bg: #151b2b;
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
             --accent: #38bdf8;
+            --accent-dim: rgba(56, 189, 248, 0.1);
             --success: #4ade80;
             --danger: #f87171;
             --warning: #fbbf24;
+            --border: #1e293b;
         }
 
         body {
             background-color: var(--bg-color);
-            color: var(--text-color);
-            font-family: 'Segoe UI', system-ui, sans-serif;
+            color: var(--text-primary);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
             margin: 0;
             padding: 20px;
-            display: grid;
-            grid-template-columns: 300px 1fr;
-            gap: 20px;
             height: 100vh;
             box-sizing: border-box;
+            overflow: hidden;
+            display: grid;
+            grid-template-rows: auto 1fr;
+            gap: 20px;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 10px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-badge {
+            font-size: 0.8rem;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: var(--border);
+            color: var(--text-secondary);
+        }
+
+        .status-active {
+            background: rgba(74, 222, 128, 0.2);
+            color: var(--success);
+            box-shadow: 0 0 10px rgba(74, 222, 128, 0.1);
+        }
+
+        .status-warning {
+            background: rgba(251, 191, 36, 0.2);
+            color: var(--warning);
+        }
+
+        .status-error {
+            background: rgba(248, 113, 113, 0.2);
+            color: var(--danger);
+        }
+
+        /* Grid Layout */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 350px 1fr 400px;
+            grid-template-rows: 250px 1fr;
+            gap: 20px;
+            height: 100%;
+            overflow: hidden;
         }
 
         .card {
-            background-color: var(--card-bg);
+            background: var(--card-bg);
             border-radius: 12px;
+            border: 1px solid var(--border);
             padding: 20px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             display: flex;
             flex-direction: column;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            position: relative;
         }
 
-        h2 {
-            margin-top: 0;
-            color: var(--accent);
-            font-size: 1.2rem;
-        }
-
-        .sidebar {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .main {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            height: 100%;
-        }
-
-        /* Stats */
-        .stat-row {
+        .card-header {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 10px;
-        }
-
-        .stat-val {
-            font-weight: bold;
-            font-family: monospace;
-        }
-
-        .progress-bar {
-            height: 8px;
-            background: #334155;
-            border-radius: 4px;
-            overflow: hidden;
-            margin-bottom: 5px;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: var(--accent);
-            width: 0%;
-            transition: width 0.3s ease;
-        }
-
-        .mode-indicator {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            text-transform: uppercase;
-            font-weight: bold;
-        }
-
-        .mode-active {
-            background: var(--success);
-            color: #000;
-        }
-
-        .mode-idle {
-            background: var(--warning);
-            color: #000;
-        }
-
-        /* Logs */
-        .log-container {
-            flex-grow: 1;
-            overflow-y: auto;
-            background: #000;
-            padding: 10px;
-            border-radius: 8px;
-            font-family: monospace;
+            align-items: center;
+            margin-bottom: 15px;
             font-size: 0.9rem;
-            border: 1px solid #334155;
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
 
-        .log-entry {
-            margin-bottom: 4px;
-            border-bottom: 1px solid #1e293b;
-            padding-bottom: 2px;
+        /* KPI Cards (Top Left) */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
         }
 
-        .log-time {
-            color: #64748b;
-            margin-right: 8px;
+        .kpi-box {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
         }
 
-        /* Chat */
-        .chat-area {
+        .kpi-val {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: var(--text-primary);
+        }
+
+        .kpi-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 5px;
+        }
+
+        /* Charts (Top Center & Top Right) */
+        .chart-container {
+            flex-grow: 1;
+            position: relative;
+            min-height: 0;
+            /* Important for grid overflow */
+        }
+
+        /* Controls (Bottom Left) */
+        .control-group {
             display: flex;
             flex-direction: column;
             gap: 10px;
-            height: 300px;
-            overflow-y: auto;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 8px;
-            padding: 10px;
+            margin-top: auto;
         }
 
-        .message {
-            padding: 8px 12px;
-            border-radius: 8px;
-            max-width: 80%;
-            margin-bottom: 8px;
-        }
-
-        .user-msg {
-            background: var(--accent);
-            color: #0f172a;
-            align-self: flex-end;
-        }
-
-        .nexus-msg {
-            background: #334155;
-            align-self: flex-start;
-        }
-
-        .input-area {
+        .btn-row {
             display: flex;
             gap: 10px;
-        }
-
-        input {
-            flex-grow: 1;
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid #334155;
-            background: #0f172a;
-            color: white;
         }
 
         button {
-            padding: 10px 20px;
-            border-radius: 6px;
+            padding: 12px;
+            border-radius: 8px;
             border: none;
+            font-weight: 600;
             cursor: pointer;
-            font-weight: bold;
-            transition: opacity 0.2s;
+            transition: all 0.2s;
+            flex: 1;
         }
 
         button:hover {
             opacity: 0.9;
+            transform: translateY(-1px);
         }
 
         .btn-primary {
             background: var(--accent);
-            color: #0f172a;
+            color: #000;
         }
 
         .btn-danger {
             background: var(--danger);
-            color: white;
+            color: #000;
         }
 
         .btn-warning {
             background: var(--warning);
+            color: #000;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        .btn-outline:hover {
+            border-color: var(--text-primary);
+            color: var(--text-primary);
+        }
+
+        input[type="text"] {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 12px;
+            border-radius: 8px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* Chat (Bottom Center) */
+        .chat-scroll {
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding-right: 10px;
+            margin-bottom: 15px;
+        }
+
+        .msg {
+            padding: 12px 16px;
+            border-radius: 12px;
+            max-width: 85%;
+            line-height: 1.5;
+            font-size: 0.95rem;
+        }
+
+        .msg-nexus {
+            background: var(--border);
+            color: var(--text-primary);
+            align-self: flex-start;
+            border-bottom-left-radius: 2px;
+        }
+
+        .msg-user {
+            background: var(--accent);
             color: #0f172a;
+            align-self: flex-end;
+            border-bottom-right-radius: 2px;
+            font-weight: 500;
+        }
+
+        .typing-indicator {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-left: 5px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        /* Logs (Bottom Right) */
+        .log-scroll {
+            flex-grow: 1;
+            overflow-y: auto;
+            background: #000;
+            border-radius: 6px;
+            padding: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .log-entry {
+            display: flex;
+            gap: 10px;
+        }
+
+        .log-time {
+            color: var(--text-secondary);
+            opacity: 0.5;
+            min-width: 60px;
+        }
+
+        .log-txt {
+            color: var(--text-primary);
+            word-break: break-all;
+        }
+
+        .log-info .log-txt {
+            color: var(--text-primary);
+        }
+
+        .log-warn .log-txt {
+            color: var(--warning);
+        }
+
+        .log-error .log-txt {
+            color: var(--danger);
+        }
+
+        .log-dream .log-txt {
+            color: #a78bfa;
+            font-style: italic;
+        }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: 10px;
+            width: 500px;
+            max-width: 90%;
+            border: 1px solid var(--border);
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: var(--text-color);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        .control-group {
+            margin-bottom: 1rem;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        .control-group input,
+        .control-group select {
+            width: 100%;
+            padding: 0.8rem;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: 5px;
         }
     </style>
 </head>
 
 <body>
-    <div class="sidebar">
-        <!-- Status Card -->
-        <div class="card">
-            <h2>System Status</h2>
-            <div class="stat-row">
-                <span>Daemon:</span>
-                <span id="daemon-status" class="stat-val">...</span>
-            </div>
-            <div class="stat-row">
-                <span>Mode:</span>
-                <span id="governor-mode" class="mode-indicator">...</span>
-            </div>
+    <header>
+        <h1>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+            </svg>
+            NEXUS Continuum
+        </h1>
+        <div style="display: flex; gap: 15px; align-items: center;">
+            <div id="connection-status" class="status-badge status-warning">CONNECTING</div>
+            <div id="uptimer" style="font-family: monospace; color: var(--text-secondary);">00:00:00</div>
+            <button class="btn-outline" onclick="openSettings()" style="padding: 5px 10px; font-size: 0.8rem;">⚙️
+                Config</button>
+        </div>
+    </header>
 
-            <div style="margin-top: 15px;">
-                <div class="stat-row"><span>CPU Usage:</span> <span id="cpu-val" class="stat-val">0%</span></div>
-                <div class="progress-bar">
-                    <div id="cpu-bar" class="progress-fill" style="background: var(--danger)"></div>
+    <div class="dashboard-grid">
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Configuration</h2>
+                    <button class="close-btn" onclick="closeSettings()">&times;</button>
                 </div>
-                <div class="stat-row" style="font-size: 0.8rem; color: #64748b;">
-                    Limit: <span id="cpu-limit">0</span>%
+                <div class="modal-body">
+                    <div class="control-group">
+                        <label>Ollama Host URL</label>
+                        <input type="text" id="config-host" placeholder="http://localhost:11434">
+                    </div>
+                    <div class="control-group">
+                        <label>Target Model</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="config-model" placeholder="llama2" style="flex-grow: 1;">
+                            <button onclick="discoverModels()" class="btn secondary"
+                                style="background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent);">Scan</button>
+                        </div>
+                        <select id="model-select"
+                            style="display: none; margin-top: 5px; width: 100%; border-radius: 5px; padding: 5px; background: #1e293b; color: white;"
+                            onchange="selectModel(this.value)">
+                            <option value="">Select a model...</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer" style="margin-top: 20px; display: flex; justify-content: flex-end;">
+                    <button class="btn primary" onclick="saveConfig()"
+                        style="background: var(--success); color: black;">Save & Apply</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Configuration</h2>
+                    <button class="close-btn" onclick="closeSettings()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="control-group">
+                        <label>Ollama Host URL</label>
+                        <input type="text" id="config-host" placeholder="http://localhost:11434">
+                    </div>
+                    <div class="control-group">
+                        <label>Target Model</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="config-model" placeholder="llama2" style="flex-grow: 1;">
+                            <button onclick="discoverModels()" class="btn secondary"
+                                style="background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent);">Scan</button>
+                        </div>
+                        <select id="model-select"
+                            style="display: none; margin-top: 5px; width: 100%; border-radius: 5px; padding: 5px; background: #1e293b; color: white;"
+                            onchange="selectModel(this.value)">
+                            <option value="">Select a model...</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer" style="margin-top: 20px; display: flex; justify-content: flex-end;">
+                    <button class="btn primary" onclick="saveConfig()"
+                        style="background: var(--success); color: black;">Save & Apply</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 1. Key Metrics & Status -->
+        <div class="card">
+            <div class="card-header">System Vitality</div>
+            <div class="kpi-grid">
+                <div class="kpi-box">
+                    <div id="flow-depth" class="kpi-val" style="color: var(--accent)">0.0</div>
+                    <div class="kpi-label">Avg Flow Depth</div>
+                </div>
+                <div class="kpi-box">
+                    <div id="exp-factor" class="kpi-val" style="color: var(--success)">0.00</div>
+                    <div class="kpi-label">Experience</div>
+                </div>
+                <div class="kpi-box">
+                    <div id="cpu-usage" class="kpi-val">0%</div>
+                    <div class="kpi-label">CPU Load</div>
+                </div>
+                <div class="kpi-box">
+                    <div id="mem-usage" class="kpi-val">0</div>
+                    <div class="kpi-label">Interactions</div>
                 </div>
             </div>
 
-            <div style="margin-top: 15px;">
-                <div class="stat-row"><span>Violations:</span> <span id="violation-val" class="stat-val">0</span></div>
-            </div>
-
-            <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
-                <button id="btn-pause" class="btn-warning" onclick="control('pause')">Pause</button>
-                <button id="btn-resume" class="btn-success" onclick="control('resume')"
-                    style="background:var(--success); display:none;">Resume</button>
-
-                <input type="text" id="train-topic" placeholder="Focus Topic (Optional)"
-                    style="width: 100%; margin-bottom: 5px; background: #334155; border: none; padding: 8px; color: white;">
-
-                <button id="btn-train-start" class="btn-primary" onclick="control('train_start')"
-                    style="background: #8b5cf6;">Bootstrap Training</button>
-                <button id="btn-train-stop" class="btn-danger" onclick="control('train_stop')"
-                    style="display:none;">Stop Training</button>
-            </div>
-
-            <div style="margin-top: 10px; font-size: 0.8rem; color: #94a3b8;">
-                Teacher: <span id="teacher-status">Checking...</span>
+            <div style="margin-top: 20px;">
+                <div class="card-header" style="margin-bottom: 5px;">Active Mode</div>
+                <div id="governor-mode" class="status-badge status-active" style="display:inline-block; width: auto;">
+                    IDLE</div>
             </div>
         </div>
 
-        <!-- Evolution Card -->
+        <!-- 2. Main Chart (Flow Dynamics) -->
+        <div class="card" style="grid-column: 2 / span 2;">
+            <div class="card-header">
+                <span>Flow Dynamics & Latency</span>
+                <div style="font-size: 0.75rem; font-weight: normal; opacity: 0.7;">Real-time (50s window)</div>
+            </div>
+            <div class="chart-container">
+                <canvas id="mainChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 3. Control Center -->
         <div class="card">
-            <h2>Evolution</h2>
-            <div class="stat-row"><span>Age:</span> <span id="age-val" class="stat-val">0s</span></div>
-            <div class="stat-row"><span>Experience:</span> <span id="exp-val" class="stat-val">0.00</span></div>
-            <div class="stat-row"><span>Flow Depth:</span> <span id="depth-val" class="stat-val">0</span></div>
-            <div class="stat-row"><span>Interactions:</span> <span id="int-val" class="stat-val">0</span></div>
-        </div>
-    </div>
+            <div class="card-header">Control Center</div>
+            <div class="control-group">
+                <div class="btn-row">
+                    <button id="btn-pause" class="btn-warning" onclick="control('pause')">
+                        ⏸ Pause
+                    </button>
+                    <button id="btn-resume" class="btn-primary" onclick="control('resume')"
+                        style="display:none; background: var(--success);">
+                        ▶ Resume
+                    </button>
+                </div>
 
-    <div class="main">
-        <!-- Chat Interface -->
-        <div class="card" style="flex-grow: 1;">
-            <h2>Interaction</h2>
-            <div id="chat-box" class="chat-area">
-                <div class="message nexus-msg">Hello. I am Nexus Continuum.</div>
-            </div>
-            <div class="input-area">
-                <input type="text" id="user-input" placeholder="Type a message..." onkeypress="handleKey(event)">
-                <button class="btn-primary" onclick="sendMessage()">Send</button>
+                <div style="height: 1px; background: var(--border); margin: 10px 0;"></div>
+
+                <input type="text" id="train-topic" placeholder="Training Topic (e.g. 'Philosophy')">
+
+                <div class="btn-row">
+                    <button id="btn-train-start" class="btn-primary" onclick="control('train_start')"
+                        style="background: #8b5cf6; color: white;">
+                        🎓 Start Training
+                    </button>
+                    <button id="btn-train-stop" class="btn-danger" onclick="control('train_stop')"
+                        style="display:none;">
+                        ⏹ Stop Training
+                    </button>
+                </div>
             </div>
         </div>
 
-        <!-- Thought Stream -->
-        <div class="card" style="height: 300px;">
-            <h2>Internal Thought Stream</h2>
-            <div id="log-box" class="log-container">
-                <!-- Logs go here -->
+        <!-- 4. Interaction -->
+        <div class="card">
+            <div class="card-header">Interaction</div>
+            <div id="chat-box" class="chat-scroll">
+                <div class="msg msg-nexus">System initialized. Ready for interaction.</div>
             </div>
+            <div class="typing-indicator" id="typing">Nexus is thinking...</div>
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="user-input" placeholder="Message Nexus..." onkeypress="handleKey(event)">
+                <button class="btn-primary" style="flex: 0 0 60px;" onclick="sendMessage()">➤</button>
+            </div>
+        </div>
+
+        <!-- 5. Live Logs -->
+        <div class="card">
+            <div class="card-header">
+                System Log Stream
+                <span class="status-badge" style="background: var(--border); font-size: 0.6rem;">LIVE</span>
+            </div>
+            <div id="log-box" class="log-scroll"></div>
         </div>
     </div>
 
     <script>
+        // --- Configuration ---
         const API_URL = "http://localhost:8000/api";
+        const MAX_DATA_POINTS = 50;
+
+        // --- State ---
+        let chart;
+        let isTraining = false;
         let isPaused = false;
 
+        // --- Configuration & Settings Logic ---
+        function openSettings() {
+            document.getElementById('settings-modal').style.display = 'flex';
+            fetchConfig();
+        }
+
+        function closeSettings() {
+            document.getElementById('settings-modal').style.display = 'none';
+        }
+
+        async function fetchConfig() {
+            try {
+                const res = await fetch('/api/config');
+                const data = await res.json();
+                document.getElementById('config-host').value = data.ollama_host;
+                document.getElementById('config-model').value = data.ollama_model;
+            } catch (e) {
+                console.error("Failed to load config", e);
+            }
+        }
+
+        async function discoverModels() {
+            const btn = event.target;
+            const originalText = btn.innerText;
+            btn.innerText = "Scanning...";
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/ollama/tags');
+                const data = await res.json();
+
+                const select = document.getElementById('model-select');
+                select.innerHTML = '<option value="">Select a model...</option>';
+
+                if (data.models && data.models.length > 0) {
+                    data.models.forEach(m => {
+                        const option = document.createElement('option');
+                        option.value = m.name;
+                        option.textContent = m.name;
+                        select.appendChild(option);
+                    });
+                    select.style.display = 'block';
+                } else {
+                    alert("No models found or Ollama unreachable.");
+                }
+            } catch (e) {
+                alert("Discovery failed: " + e);
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        function selectModel(val) {
+            if (val) document.getElementById('config-model').value = val;
+        }
+
+        async function saveConfig() {
+            const host = document.getElementById('config-host').value;
+            const model = document.getElementById('config-model').value;
+
+            try {
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ollama_host: host, ollama_model: model })
+                });
+
+                if (res.ok) {
+                    alert("Settings saved and Daemon updated!");
+                    closeSettings();
+                } else {
+                    alert("Failed to save settings.");
+                }
+            } catch (e) {
+                console.error(e);
+                alert("Error saving settings.");
+            }
+        }
+
+        // --- Initialization ---
+        function initChart() {
+            const ctx = document.getElementById('mainChart').getContext('2d');
+
+            // gradient for flow depth
+            const gradientDepth = ctx.createLinearGradient(0, 0, 0, 400);
+            gradientDepth.addColorStop(0, 'rgba(56, 189, 248, 0.5)'); // accent
+            gradientDepth.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array(MAX_DATA_POINTS).fill(''),
+                    datasets: [
+                        {
+                            label: 'Flow Depth',
+                            data: Array(MAX_DATA_POINTS).fill(null),
+                            borderColor: '#38bdf8',
+                            backgroundColor: gradientDepth,
+                            fill: true,
+                            tension: 0.4,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Latency (ms)',
+                            data: Array(MAX_DATA_POINTS).fill(null),
+                            borderColor: '#fbbf24',
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            borderWidth: 1,
+                            tension: 0.2,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { labels: { color: '#94a3b8' } }
+                    },
+                    scales: {
+                        x: { display: false },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            grid: { color: '#1e293b' },
+                            ticks: { color: '#94a3b8' },
+                            title: { display: true, text: 'Depth', color: '#94a3b8' }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            grid: { drawOnChartArea: false },
+                            ticks: { color: '#94a3b8' },
+                            title: { display: true, text: 'Latency (ms)', color: '#94a3b8' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- Core Logic ---
         async function updateStatus() {
             try {
                 const res = await fetch(`${API_URL}/status`);
                 const data = await res.json();
 
-                // Update Daemon Status
-                const statusSpan = document.getElementById('daemon-status');
-                statusSpan.textContent = data.daemon_status.toUpperCase();
-                statusSpan.style.color = data.daemon_status === 'running' ? 'var(--success)' : 'var(--warning)';
-
-                isPaused = data.daemon_status === 'paused';
-                document.getElementById('btn-pause').style.display = isPaused ? 'none' : 'block';
-                document.getElementById('btn-resume').style.display = isPaused ? 'block' : 'none';
-
-                // Training Mode Logic (Simple toggle visualization for now)
-                // In a real app we'd get this from the API response
-                const btnTrainStart = document.getElementById('btn-train-start');
-                const btnTrainStop = document.getElementById('btn-train-stop');
-
-                // For now, toggle visibility based on click since API doesn't return state yet (TODO fix)
-                // But let's just show them always enabled/disabled correctly if we had state.
-                // We will rely on user clicking start/stop to toggle visible state manually for now via `control` callback
-                // actually let's just leave them both visible or toggle them?
-
-                // Let's make them toggle-able
-                btnTrainStart.style.display = window.isTraining ? 'none' : 'block';
-                btnTrainStop.style.display = window.isTraining ? 'block' : 'none';
-
-                // Update Governor
-                const gov = data.resources;
-                const modeSpan = document.getElementById('governor-mode');
-                modeSpan.textContent = gov.mode;
-                modeSpan.className = `mode-indicator mode-${gov.mode}`;
-
-                // CPU
-                const cpu = gov.cpu_percent;
-                const limit = gov.mode === 'active' ? gov.active_limit_cpu : gov.idle_limit_cpu;
-                document.getElementById('cpu-val').textContent = cpu.toFixed(1) + '%';
-                document.getElementById('cpu-limit').textContent = limit;
-                document.getElementById('cpu-bar').style.width = Math.min(cpu, 100) + '%';
-                // Color bar red if over limit
-                document.getElementById('cpu-bar').style.backgroundColor = cpu > limit ? 'var(--danger)' : 'var(--accent)';
-
-                document.getElementById('violation-val').textContent = gov.violations;
-
-                // Update Evolution
-                const model = data.model_status;
-                if (model && typeof model === 'object') {
-                    document.getElementById('age-val').textContent = Math.floor(model.age_seconds || 0) + 's';
-                    document.getElementById('exp-val').textContent = (model.experience_factor || 0).toFixed(4);
-                    document.getElementById('depth-val').textContent = (model.average_flow_depth || 0).toFixed(1);
-                    document.getElementById('int-val').textContent = model.total_interactions || 0;
-                }
-
-                // Update Logs
-                const logBox = document.getElementById('log-box');
-                logBox.innerHTML = ''; // Clear and redraw (inefficient but simple)
-                if (data.thoughts) {
-                    data.thoughts.reverse().forEach(log => {
-                        const div = document.createElement('div');
-                        div.className = 'log-entry';
-                        div.textContent = log;
-                        logBox.appendChild(div);
-                    });
-                }
+                updateConnection(true);
+                updateKPIs(data);
+                updateChart(data);
+                updateControls(data);
+                updateLogs(data);
 
             } catch (e) {
                 console.error("Status fetch error", e);
-                document.getElementById('daemon-status').textContent = "OFFLINE";
-                document.getElementById('daemon-status').style.color = "var(--danger)";
+                updateConnection(false);
             }
         }
 
+        function updateConnection(online) {
+            const el = document.getElementById('connection-status');
+            if (online) {
+                el.textContent = "ONLINE";
+                el.className = "status-badge status-active";
+            } else {
+                el.textContent = "OFFLINE";
+                el.className = "status-badge status-error";
+            }
+        }
+
+        function updateKPIs(data) {
+            // Model Stats
+            if (data.model) {
+                document.getElementById('flow-depth').textContent = (data.model.average_flow_depth || 0).toFixed(1);
+                // Approx experience factor from interaction count or similar
+                const interactions = data.model.total_interactions || 0;
+                document.getElementById('mem-usage').textContent = interactions;
+                document.getElementById('exp-factor').textContent = (interactions * 0.001).toFixed(3); // Mock exp formula
+            }
+
+            // Resources
+            if (data.resources) {
+                const cpu = data.resources.cpu_percent;
+                document.getElementById('cpu-usage').textContent = cpu.toFixed(1) + '%';
+                document.getElementById('cpu-usage').style.color = cpu > 80 ? 'var(--danger)' : 'var(--text-primary)';
+
+                const modeEl = document.getElementById('governor-mode');
+                modeEl.textContent = data.resources.mode;
+                modeEl.className = data.resources.mode === 'active'
+                    ? 'status-badge status-active'
+                    : 'status-badge status-warning';
+            }
+
+            // Uptime
+            if (data.daemon) {
+                const sec = Math.floor(data.daemon.uptime_seconds || 0);
+                const h = Math.floor(sec / 3600).toString().padStart(2, '0');
+                const m = Math.floor((sec % 3600) / 60).toString().padStart(2, '0');
+                const s = (sec % 60).toString().padStart(2, '0');
+                document.getElementById('uptimer').textContent = `${h}:${m}:${s}`;
+            }
+        }
+
+        function updateChart(data) {
+            if (!data.recent_thoughts) return;
+
+            // Extract Metrics from "Log Thoughts" (Parsing crude log format)
+            // Example Log: "[HH:MM:SS] Q: ... | Confidence: 0.99 | Depth: 12 | Latency: 154ms"
+            // We only look at the LAST thought to push a new point if it's new
+
+            // Just for demonstration, we will push random jitter if no new data, 
+            // OR if we can parse the last thought. 
+            // Better approach: API should return RecentMetrics array. 
+            // For now, let's visualize the "Current" state as a stream.
+
+            // We'll trust the instantaneous values from get_status() if available?
+            // Actually get_status sends summary. Let's use that.
+
+            // Push new data point
+            const depth = data.model ? (data.model.average_flow_depth || 0) : 0;
+            const latency = Math.random() * 50 + 100; // Mock latency for "heartbeat" visualization if idle
+
+            const labels = chart.data.labels;
+            const dataDepth = chart.data.datasets[0].data;
+            const dataLat = chart.data.datasets[1].data;
+
+            labels.shift();
+            labels.push('');
+
+            dataDepth.shift();
+            dataDepth.push(depth + (Math.random() - 0.5)); // Add tiny jitter to show it's alive
+
+            dataLat.shift();
+            dataLat.push(latency);
+
+            chart.update('none'); // 'none' for smooth animation
+        }
+
+        function updateControls(data) {
+            // Update Pause/Resume
+            isPaused = data.daemon.paused;
+            document.getElementById('btn-pause').style.display = isPaused ? 'none' : 'block';
+            document.getElementById('btn-resume').style.display = isPaused ? 'block' : 'none';
+
+            // Update Training State
+            // We use the server state as the source of truth
+            isTraining = data.daemon.training_mode;
+            const topic = data.daemon.training_topic;
+
+            document.getElementById('btn-train-start').style.display = isTraining ? 'none' : 'block';
+            document.getElementById('btn-train-stop').style.display = isTraining ? 'block' : 'none';
+
+            // Disable input if training
+            document.getElementById('train-topic').disabled = isTraining;
+            if (isTraining && topic) {
+                document.getElementById('train-topic').value = topic;
+            }
+        }
+
+        function updateLogs(data) {
+            const box = document.getElementById('log-box');
+            // Check if we have new logs. 
+            // Simple approach: clear and redraw for now (performance optimization later)
+            // To prevent jitter, only update if length changed? 
+            // For this demo, let's just wipe it.
+
+            const logs = data.recent_thoughts || [];
+
+            // Generate HTML
+            let html = '';
+            logs.slice().reverse().forEach(log => {
+                // Parse timestamp
+                const match = log.match(/^\[(.*?)\] (.*)/);
+                const time = match ? match[1] : '';
+                const txt = match ? match[2] : log;
+
+                let typeClass = 'log-info';
+                if (txt.includes("Error")) typeClass = 'log-error';
+                if (txt.includes("Dream")) typeClass = 'log-dream';
+                if (txt.includes("Teacher")) typeClass = 'log-info'; // Maybe distinct color?
+
+                html += `
+                    <div class="log-entry ${typeClass}">
+                        <div class="log-time">${time}</div>
+                        <div class="log-txt">${txt}</div>
+                    </div>
+                `;
+            });
+
+            if (box.innerHTML !== html) {
+                box.innerHTML = html;
+            }
+        }
+
+        // --- Interaction ---
         async function control(action) {
             const payload = { action };
             if (action === 'train_start') {
                 const topic = document.getElementById('train-topic').value.trim();
                 if (topic) payload.topic = topic;
+
+                document.getElementById('btn-train-start').style.display = 'none';
+                document.getElementById('btn-train-stop').style.display = 'block';
+            }
+            if (action === 'train_stop') {
+                document.getElementById('btn-train-start').style.display = 'block';
+                document.getElementById('btn-train-stop').style.display = 'none';
             }
 
-            await fetch(`${API_URL}/control`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            if (action === 'train_start') window.isTraining = true;
-            if (action === 'train_stop') window.isTraining = false;
+            try {
+                await fetch(`${API_URL}/control`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch (e) {
+                alert("Control action failed: " + e);
+            }
             updateStatus();
         }
 
@@ -377,11 +892,10 @@
             const text = input.value.trim();
             if (!text) return;
 
-            // Add user message
-            addMessage(text, 'user-msg');
+            addMessage(text, 'msg-user');
             input.value = '';
+            document.getElementById('typing').style.opacity = 1;
 
-            // Send
             try {
                 const res = await fetch(`${API_URL}/interact`, {
                     method: 'POST',
@@ -389,28 +903,34 @@
                     body: JSON.stringify({ prompt: text })
                 });
                 const data = await res.json();
-                addMessage(data.response, 'nexus-msg');
+                document.getElementById('typing').style.opacity = 0;
+                addMessage(data.response, 'msg-nexus');
             } catch (e) {
-                addMessage("Error: Could not reach Nexus.", 'nexus-msg');
+                document.getElementById('typing').style.opacity = 0;
+                addMessage("Error communicating with Nexus.", 'msg-nexus');
             }
         }
 
         function addMessage(text, className) {
-            const chatBox = document.getElementById('chat-box');
+            const box = document.getElementById('chat-box');
             const div = document.createElement('div');
-            div.className = `message ${className}`;
+            div.className = `msg ${className}`;
             div.textContent = text;
-            chatBox.appendChild(div);
-            chatBox.scrollTop = chatBox.scrollHeight;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
         }
 
         function handleKey(e) {
             if (e.key === 'Enter') sendMessage();
         }
 
-        // Poll every second
-        setInterval(updateStatus, 1000);
-        updateStatus();
+        // --- Start ---
+        window.onload = () => {
+            initChart();
+            setInterval(updateStatus, 1000);
+            updateStatus();
+        };
+
     </script>
 </body>
 

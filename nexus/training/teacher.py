@@ -14,9 +14,21 @@ logger = logging.getLogger("nexus.teacher")
 
 
 class OllamaTeacher:
-    def __init__(self, base_url: str = "http://localhost:11434", model: str = "llama2"):
-        self.base_url = base_url.rstrip("/")
-        self.model = model
+    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None):
+        """
+        Initialize Ollama Teacher.
+
+        Args:
+            base_url: URL of Ollama server. Defaults to env OLLAMA_HOST or localhost.
+            model: Model name. Defaults to env OLLAMA_MODEL or llama2.
+        """
+        import os
+
+        # Priority: explicit arg > env var > default
+        self.base_url = (base_url or os.getenv("OLLAMA_HOST", "http://localhost:11434")).rstrip("/")
+
+        self.model = model or os.getenv("OLLAMA_MODEL", "llama2")
+
         self.available = False
         self._check_availability()
 

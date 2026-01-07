@@ -226,8 +226,7 @@ class CheckpointManager:
                 actual_checksum = self._calculate_checksum(checkpoint_path)
                 if actual_checksum != metadata.checksum:
                     raise ValueError(
-                        f"Checksum mismatch for {checkpoint_path}. "
-                        f"File may be corrupted."
+                        f"Checksum mismatch for {checkpoint_path}. " f"File may be corrupted."
                     )
         else:
             logger.warning(f"No metadata found for {checkpoint_path}")
@@ -235,7 +234,9 @@ class CheckpointManager:
 
         # Load checkpoint
         logger.info(f"Loading checkpoint: {checkpoint_path.name}")
-        checkpoint = torch.load(checkpoint_path, map_location=device)
+        # PyTorch 2.6+ defaults to weights_only=True, breaking custom config objects.
+        # We trust our local checkpoints, so we disable this restricted mode.
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
         # Add metadata to checkpoint
         if metadata:
@@ -262,11 +263,53 @@ class CheckpointManager:
             logger.info("No checkpoints found")
             return None
 
-        # Get most recent (they're sorted by timestamp)
-        latest = checkpoints[0]
+        # Iterate through checkpoints to find a valid one
+        for latest in checkpoints:
+            try:
+                # Validation: Check if ID matches filename convention or is empty
+                if not latest.checkpoint_id:
+                    logger.warning(
+                        f"Found checkpoint with empty ID. Discarding metadata: {latest.timestamp}"
+                    )
+                    self._mark_corrupt(latest)
+                    continue
 
-        logger.info(f"Loading latest checkpoint: {latest.checkpoint_id}")
-        return self.load_checkpoint(latest.checkpoint_id, device=device)
+                logger.info(f"Loading checkpoint: {latest.checkpoint_id}")
+                return self.load_checkpoint(
+                    self.get_checkpoint_path(latest.checkpoint_id), device=device
+                )
+
+            except (FileNotFoundError, ValueError) as e:
+                logger.error(f"Failed to load checkpoint {latest.checkpoint_id}: {e}")
+                logger.warning(f"Discarding corrupt checkpoint: {latest.checkpoint_id}")
+                self._mark_corrupt(latest)
+                continue
+
+        logger.error("No valid checkpoints could be loaded.")
+        return None
+
+    def _mark_corrupt(self, metadata: CheckpointMetadata) -> None:
+        """Mark a checkpoint as corrupt by renaming its metadata file."""
+        # We rename the json file so list_checkpoints() skips it next time
+        # We could also delete it, but renaming allows manual inspection
+        try:
+            # Try to find which file corresponds to this metadata
+            # This is tricky because metadata doesn't store its own filename,
+            # but we can infer from list logic or try to match timestamp/id
+
+            # Simple approach: construct path from ID, if valid
+            if metadata.checkpoint_id:
+                json_path = self.checkpoint_dir / f"checkpoint_{metadata.checkpoint_id}.json"
+                if json_path.exists():
+                    json_path.rename(json_path.with_suffix(".json.corrupt"))
+            else:
+                # Fallback: we have to search the dir for this metadata content?
+                # Or just let the user handle it?
+                # For empty ID case, we likely can't easily find the file unless we saved the path in metadata object
+                pass
+
+        except Exception as e:
+            logger.error(f"Failed to mark checkpoint corrupt: {e}")
 
     def list_checkpoints(self) -> List[CheckpointMetadata]:
         """
@@ -314,9 +357,7 @@ class CheckpointManager:
         if len(checkpoints) > self.max_checkpoints:
             to_delete = checkpoints[self.max_checkpoints :]
 
-            logger.info(
-                f"Rotating checkpoints: deleting {len(to_delete)} old checkpoints"
-            )
+            logger.info(f"Rotating checkpoints: deleting {len(to_delete)} old checkpoints")
 
             for metadata in to_delete:
                 self.delete_checkpoint(metadata.checkpoint_id)
@@ -390,9 +431,7 @@ class CheckpointManager:
     def get_disk_usage(self) -> Dict[str, Any]:
         """Get disk usage statistics."""
         total_size = sum(
-            f.stat().st_size
-            for f in self.checkpoint_dir.glob("checkpoint_*")
-            if f.is_file()
+            f.stat().st_size for f in self.checkpoint_dir.glob("checkpoint_*") if f.is_file()
         )
 
         return {
@@ -414,7 +453,4 @@ class CheckpointManager:
             f.unlink()
 
     def __repr__(self) -> str:
-        return (
-            f"CheckpointManager(dir={self.checkpoint_dir}, "
-            f"max={self.max_checkpoints})"
-        )
+        return f"CheckpointManager(dir={self.checkpoint_dir}, " f"max={self.max_checkpoints})"
