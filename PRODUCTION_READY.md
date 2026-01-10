@@ -105,6 +105,16 @@ NEXUS has been upgraded from research prototype to **production-grade, ever-runn
   - `tokenizers>=0.13.0`
   - Updated FastAPI, Pydantic, etc.
 
+### 11. Thermal Monitoring ✅ (NEW)
+- **File:** `nexus/service/resource.py`
+- **Features:**
+  - Cross-platform `ThermalMonitor` class
+  - Linux/Raspberry Pi: Reads via `psutil` or `/sys/class/thermal/`
+  - macOS: Graceful fallback (reports "unavailable")
+  - Configurable thresholds: 70°C warning, 80°C critical
+  - Automatic throttling on high temperatures
+  - `ThermalThrottlingError` for critical events
+
 ---
 
 ## Technical Debt: ZERO ✅
@@ -237,6 +247,7 @@ python -m uvicorn nexus.service.server:app --host 0.0.0.0 --port 8000
 - [x] Error recovery and circuit breakers
 - [x] Memory management for long-running processes
 - [x] Resource governance (CPU/RAM limits)
+- [x] Thermal monitoring (temperature limits)
 - [x] Docker deployment configuration
 - [x] Systemd service configuration
 - [x] Operational runbook
@@ -305,6 +316,7 @@ response = daemon.submit_request("What is Python?")
 | Error Rate | < 1% | ✅ Circuit breakers, graceful degradation |
 | Convergence Rate | > 80% | ✅ Flowing architecture |
 | CPU Usage | < 25% idle, < 10% active | ✅ Resource governor |
+| Thermal | < 70°C normal, < 80°C critical | ✅ Thermal throttling |
 
 ---
 

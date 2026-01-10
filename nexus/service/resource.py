@@ -2,16 +2,21 @@
 Nexus Resource Governor
 =======================
 
-Strictly manages CPU and RAM usage to ensure Nexus Continuum remains a good citizen.
-Enforces the "10% Active / 25% Idle" rule.
+Strictly manages CPU, RAM, and thermal usage to ensure Nexus Continuum
+remains a good citizen. Enforces the "10% Active / 25% Idle" rule and
+monitors system temperature to prevent overheating.
 """
 
-import time
-import psutil
-import os
+import gc
 import logging
+import os
+import platform
+import subprocess
+import time
 from dataclasses import dataclass
-from typing import Literal
+from typing import Dict, Literal, Optional
+
+import psutil
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +25,12 @@ logger = logging.getLogger("nexus.governor")
 
 class ResourceExhaustedError(Exception):
     """Raised when resources are critically exhausted and operation must abort."""
+
+    pass
+
+
+class ThermalThrottlingError(Exception):
+    """Raised when thermal limits are exceeded and operation must pause."""
 
     pass
 
@@ -35,17 +46,175 @@ class ResourceConfig:
     idle_ram_limit: float = 20.0
     critical_ram_limit: float = 30.0  # Emergency abort threshold
 
+    # Thermal limits (degrees Celsius)
+    thermal_warning: float = 70.0  # Start aggressive throttling
+    thermal_critical: float = 80.0  # Emergency pause
+
     # Control intervals
     check_interval: float = 1.0  # Seconds between checks
     backoff_factor: float = 1.5  # Multiplier for sleep when violating
 
 
+class ThermalMonitor:
+    """
+    Cross-platform thermal monitoring.
+
+    Supports:
+    - Linux: psutil.sensors_temperatures() or /sys/class/thermal/
+    - Raspberry Pi: vcgencmd or /sys/class/thermal/
+    - macOS: Not supported (returns None gracefully)
+    """
+
+    def __init__(self):
+        self._system = platform.system().lower()
+        self._is_raspberry_pi = self._check_raspberry_pi()
+        self._last_temp: Optional[float] = None
+        self._available = self._check_availability()
+
+    def _check_raspberry_pi(self) -> bool:
+        """Check if running on Raspberry Pi."""
+        if self._system != "linux":
+            return False
+        try:
+            with open("/proc/device-tree/model", "r") as f:
+                return "raspberry pi" in f.read().lower()
+        except (FileNotFoundError, PermissionError):
+            return False
+
+    def _check_availability(self) -> bool:
+        """Check if thermal monitoring is available on this platform."""
+        if self._system == "darwin":
+            # macOS - not supported via Python
+            return False
+        elif self._system == "linux":
+            # Try psutil first
+            try:
+                temps = psutil.sensors_temperatures()
+                if temps:
+                    return True
+            except (AttributeError, OSError):
+                pass
+            # Try sysfs fallback
+            return os.path.exists("/sys/class/thermal/thermal_zone0/temp")
+        elif self._system == "windows":
+            # Windows - limited support
+            return False
+        return False
+
+    def get_temperature(self) -> Optional[float]:
+        """
+        Get current CPU/SoC temperature in Celsius.
+
+        Returns:
+            Temperature in Celsius, or None if unavailable.
+        """
+        if not self._available:
+            return None
+
+        temp = None
+
+        if self._system == "linux":
+            temp = self._get_linux_temp()
+
+        self._last_temp = temp
+        return temp
+
+    def _get_linux_temp(self) -> Optional[float]:
+        """Get temperature on Linux systems."""
+        # Method 1: Try psutil
+        try:
+            temps = psutil.sensors_temperatures()
+            if temps:
+                # Priority order for sensor packages
+                priority = ["coretemp", "k10temp", "cpu_thermal", "acpitz", "cpu-thermal"]
+                for package in priority:
+                    if package in temps:
+                        readings = temps[package]
+                        if readings:
+                            # Return average of all cores for coretemp/k10temp
+                            valid_temps = [r.current for r in readings if r.current > 0]
+                            if valid_temps:
+                                return sum(valid_temps) / len(valid_temps)
+                # Fallback: use first available package
+                for package, readings in temps.items():
+                    if readings:
+                        valid_temps = [r.current for r in readings if r.current > 0]
+                        if valid_temps:
+                            return sum(valid_temps) / len(valid_temps)
+        except (AttributeError, OSError, KeyError):
+            pass
+
+        # Method 2: Try sysfs (works on Raspberry Pi and many Linux systems)
+        try:
+            with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
+                temp_millidegrees = int(f.read().strip())
+                return temp_millidegrees / 1000.0
+        except (FileNotFoundError, PermissionError, ValueError):
+            pass
+
+        # Method 3: Try vcgencmd (Raspberry Pi specific)
+        if self._is_raspberry_pi:
+            try:
+                result = subprocess.run(
+                    ["vcgencmd", "measure_temp"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                )
+                if result.returncode == 0:
+                    # Output format: temp=45.0'C
+                    output = result.stdout.strip()
+                    temp_str = output.replace("temp=", "").replace("'C", "")
+                    return float(temp_str)
+            except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
+                pass
+
+        return None
+
+    def get_status(self, warning_threshold: float = 70.0, critical_threshold: float = 80.0) -> str:
+        """
+        Get thermal status based on current temperature.
+
+        Returns:
+            "normal", "warning", "critical", or "unavailable"
+        """
+        temp = self.get_temperature()
+        if temp is None:
+            return "unavailable"
+        elif temp >= critical_threshold:
+            return "critical"
+        elif temp >= warning_threshold:
+            return "warning"
+        return "normal"
+
+    @property
+    def available(self) -> bool:
+        """Whether thermal monitoring is available."""
+        return self._available
+
+    @property
+    def last_temperature(self) -> Optional[float]:
+        """Last recorded temperature (cached)."""
+        return self._last_temp
+
+
 class ResourceGovernor:
+    """
+    Manages CPU, RAM, and thermal resources to ensure NEXUS is a good citizen.
+
+    Features:
+    - Mode-based limits (active vs idle)
+    - Thermal monitoring with warning/critical thresholds
+    - Automatic throttling on violations
+    - Graceful degradation when sensors unavailable
+    """
+
     def __init__(self, config: ResourceConfig = None):
         self.config = config or ResourceConfig()
         self.process = psutil.Process(os.getpid())
         self.mode: Literal["active", "idle"] = "idle"
         self._consecutive_violations = 0
+        self._thermal_monitor = ThermalMonitor()
 
     def set_mode(self, mode: Literal["active", "idle"]):
         """Switch between active (user waiting) and idle (background learning) modes."""
@@ -54,11 +223,19 @@ class ResourceGovernor:
             self.mode = mode
             self._consecutive_violations = 0
 
-    def check_and_throttle(self):
+    def check_and_throttle(self) -> bool:
         """
         Check resource usage and sleep if necessary.
-        Forces GC if RAM is high. Raises exception if critical.
+        Forces GC if RAM is high. Raises exception if thermal critical.
+
+        Returns:
+            True if throttled, False if running normally
+
+        Raises:
+            ThermalThrottlingError: If temperature exceeds critical threshold
         """
+        throttled = False
+
         # Determine limits based on mode
         cpu_limit = (
             self.config.active_cpu_limit if self.mode == "active" else self.config.idle_cpu_limit
@@ -67,6 +244,28 @@ class ResourceGovernor:
             self.config.active_ram_limit if self.mode == "active" else self.config.idle_ram_limit
         )
 
+        # 1. Thermal Check (Highest Priority)
+        thermal_temp = self._thermal_monitor.get_temperature()
+        if thermal_temp is not None:
+            if thermal_temp >= self.config.thermal_critical:
+                logger.error(
+                    f"CRITICAL THERMAL: {thermal_temp:.1f}°C >= {self.config.thermal_critical}°C. "
+                    "Emergency pause required!"
+                )
+                raise ThermalThrottlingError(
+                    f"Temperature {thermal_temp:.1f}°C exceeds critical threshold "
+                    f"{self.config.thermal_critical}°C"
+                )
+            elif thermal_temp >= self.config.thermal_warning:
+                logger.warning(
+                    f"THERMAL WARNING: {thermal_temp:.1f}°C >= {self.config.thermal_warning}°C. "
+                    "Aggressive throttling."
+                )
+                # Sleep longer to allow cooling
+                time.sleep(2.0)
+                throttled = True
+
+        # 2. CPU Check
         try:
             current_cpu = self.process.cpu_percent(interval=None)
             # Basic smoothing to avoid blocking call
@@ -76,33 +275,33 @@ class ResourceGovernor:
         except Exception:
             current_cpu = 0.0
 
+        # 3. RAM Check
         current_ram_percent = self.process.memory_percent()
 
-        # 1. Critical Check (Emergency Abort)
+        # 4. Critical RAM Check (Emergency GC)
         if current_ram_percent > self.config.critical_ram_limit:
-            import gc
-
             gc.collect()  # Try to save it first
             new_ram = self.process.memory_percent()
             if new_ram > self.config.critical_ram_limit:
                 logger.warning(
-                    f"CRITICAL RAM USAGE: {new_ram:.1f}% > {self.config.critical_ram_limit}%. Throttling."
+                    f"CRITICAL RAM USAGE: {new_ram:.1f}% > {self.config.critical_ram_limit}%. "
+                    "Throttling hard."
                 )
-                # No abort, just let it fall through to violation logic which throttles
+                # Extended sleep for memory pressure
+                time.sleep(1.0)
+                throttled = True
 
         violation = False
 
-        # 2. CPU Violation
+        # 5. CPU Violation
         if current_cpu > cpu_limit:
             violation = True
             logger.debug(f"CPU Violation: {current_cpu:.1f}% > {cpu_limit}%")
 
-        # 3. RAM Violation
+        # 6. RAM Violation
         if current_ram_percent > ram_limit:
             violation = True
             # Active Reclamation
-            import gc
-
             cleaned = gc.collect()
             if cleaned > 0:
                 logger.debug(f"Governor forced GC: collected {cleaned} objects")
@@ -115,13 +314,22 @@ class ResourceGovernor:
 
             logger.debug(f"Throttling for {sleep_time:.2f}s")
             time.sleep(sleep_time)
+            throttled = True
         else:
             # Decay violation count
             if self._consecutive_violations > 0:
                 self._consecutive_violations -= 1
 
-    def get_stats(self):
-        """Return current resource statistics."""
+        return throttled
+
+    def get_stats(self) -> Dict:
+        """Return current resource statistics including thermal."""
+        thermal_temp = self._thermal_monitor.get_temperature()
+        thermal_status = self._thermal_monitor.get_status(
+            self.config.thermal_warning,
+            self.config.thermal_critical,
+        )
+
         return {
             "mode": self.mode,
             "cpu_percent": self.process.cpu_percent(interval=None),
@@ -129,4 +337,15 @@ class ResourceGovernor:
             "active_limit_cpu": self.config.active_cpu_limit,
             "idle_limit_cpu": self.config.idle_cpu_limit,
             "violations": self._consecutive_violations,
+            # Thermal stats
+            "thermal_celsius": thermal_temp,
+            "thermal_status": thermal_status,
+            "thermal_warning_limit": self.config.thermal_warning,
+            "thermal_critical_limit": self.config.thermal_critical,
+            "thermal_available": self._thermal_monitor.available,
         }
+
+    @property
+    def thermal_available(self) -> bool:
+        """Whether thermal monitoring is available on this platform."""
+        return self._thermal_monitor.available

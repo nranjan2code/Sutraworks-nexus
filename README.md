@@ -76,6 +76,7 @@ print(nexus.get_status())
 
 ### Key Features
 - **Resource Governance**: Active: 10% CPU | Idle: 25% CPU
+- **Thermal Monitoring**: Warning at 70°C, critical at 80°C
 - **Continuous Evolution**: Learns from every interaction
 - **Checkpoint Persistence**: Auto-saves every 5 minutes
 - **Error Recovery**: Circuit breakers prevent cascading failures

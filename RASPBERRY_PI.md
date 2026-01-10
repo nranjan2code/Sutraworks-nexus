@@ -468,6 +468,48 @@ sudo nano /boot/config.txt
 sudo reboot
 ```
 
+### 6. Configure Thermal Thresholds (NEW)
+
+NEXUS includes automatic thermal monitoring to prevent overheating on Raspberry Pi. The defaults are conservative, but you can adjust them:
+
+```python
+# In nexus/service/resource.py or via environment
+from nexus.service.resource import ResourceConfig
+
+config = ResourceConfig(
+    # Thermal limits (degrees Celsius)
+    thermal_warning=65.0,   # Pi throttles at 80°C, so warn earlier
+    thermal_critical=75.0,  # Pi thermal throttle is at 80°C
+    
+    # Standard resource limits
+    active_cpu_limit=25.0,
+    idle_cpu_limit=40.0,
+)
+```
+
+**Thermal Behavior on Pi:**
+
+| Temperature | NEXUS Action |
+|-------------|--------------|
+| < 65°C | Normal operation |
+| 65-75°C | Aggressive throttling (2s sleep) |
+| > 75°C | Emergency pause, wait for cooldown |
+
+**Monitoring Temperature:**
+
+```bash
+# Check Pi temperature
+vcgencmd measure_temp
+
+# NEXUS API (returns thermal_celsius in response)
+curl http://raspberrypi.local:8000/api/status | jq '.governor.thermal_celsius'
+```
+
+**Cooling Recommendations:**
+- Use a heatsink + fan case (essential for 24/7 operation)
+- Set Pi CPU governor to "ondemand" instead of "performance"
+- Ensure adequate ventilation
+
 ---
 
 ## 📈 Monitoring & Alerts
