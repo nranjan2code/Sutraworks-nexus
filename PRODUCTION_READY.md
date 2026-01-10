@@ -1,8 +1,8 @@
 # NEXUS Continuum - Production Ready ✅
 
-**Status:** Production Ready
-**Date:** 2026-01-07
-**Version:** 2.0.0
+**Status:** Production Ready  
+**Date:** 2026-01-10  
+**Version:** 2.1.0
 
 ---
 
@@ -105,7 +105,7 @@ NEXUS has been upgraded from research prototype to **production-grade, ever-runn
   - `tokenizers>=0.13.0`
   - Updated FastAPI, Pydantic, etc.
 
-### 11. Thermal Monitoring ✅ (NEW)
+### 11. Thermal Monitoring ✅
 - **File:** `nexus/service/resource.py`
 - **Features:**
   - Cross-platform `ThermalMonitor` class
@@ -114,6 +114,37 @@ NEXUS has been upgraded from research prototype to **production-grade, ever-runn
   - Configurable thresholds: 70°C warning, 80°C critical
   - Automatic throttling on high temperatures
   - `ThermalThrottlingError` for critical events
+
+### 12. Dynamic Hardware Detection ✅ (NEW in v2.1.0)
+- **File:** `nexus/service/hardware.py`
+- **Features:**
+  - Cross-platform hardware detection (CPU/GPU/Accelerators)
+  - Supports NVIDIA CUDA, Apple MPS, AMD ROCm
+  - Apple Neural Engine detection
+  - Device selection strategies: AUTO, PREFER_GPU, PREFER_CPU, PREFER_MPS
+  - Optimal precision recommendation (fp32/fp16/bf16)
+  - Dynamic batch size based on available memory
+  - Raspberry Pi detection
+
+### 13. GPU-Aware Resource Governance ✅ (NEW in v2.1.0)
+- **File:** `nexus/service/resource.py`
+- **Features:**
+  - `GPUMonitor` class - GPU memory and utilization tracking
+  - GPU memory limit: 50% (configurable)
+  - GPU utilization limit: 80% (configurable)
+  - GPU thermal monitoring (NVIDIA via nvidia-smi)
+  - `should_use_gpu()` - intelligent device selection
+  - Automatic throttling when GPU overloaded
+
+### 14. Security Hardening ✅ (NEW in v2.1.0)
+- **File:** `nexus/service/auth.py`
+- **Features:**
+  - API key authentication (via `NEXUS_API_KEY` env var)
+  - Rate limiting: 60 req/min default (via slowapi)
+  - Configurable via `NEXUS_RATE_LIMIT_RPM`
+  - Constant-time key comparison (timing attack safe)
+  - Optional JWT support for multi-user scenarios
+  - New `/api/hardware` endpoint
 
 ---
 

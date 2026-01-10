@@ -1,7 +1,7 @@
 # NEXUS Continuum - Operations Runbook
 
-**Version:** 1.0
-**Last Updated:** 2026-01-07
+**Version:** 1.1  
+**Last Updated:** 2026-01-10  
 **Maintainer:** NEXUS Team
 
 ---
@@ -10,10 +10,11 @@
 
 1. [Quick Start](#quick-start)
 2. [Deployment](#deployment)
-3. [Monitoring](#monitoring)
-4. [Troubleshooting](#troubleshooting)
-5. [Maintenance](#maintenance)
-6. [Emergency Procedures](#emergency-procedures)
+3. [Security](#security)
+4. [Monitoring](#monitoring)
+5. [Troubleshooting](#troubleshooting)
+6. [Maintenance](#maintenance)
+7. [Emergency Procedures](#emergency-procedures)
 
 ---
 
@@ -152,6 +153,71 @@ Then reload:
 sudo systemctl daemon-reload
 sudo systemctl restart nexus
 ```
+
+---
+
+## Security
+
+### API Key Authentication
+
+Enable API key authentication by setting the `NEXUS_API_KEY` environment variable:
+
+```bash
+# Generate a secure API key
+python -c "from nexus.service.auth import create_api_key; print(create_api_key())"
+
+# Set the API key
+export NEXUS_API_KEY="nexus_your-generated-key-here"
+```
+
+**Environment Variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NEXUS_API_KEY` | None (public) | API key for authentication |
+| `NEXUS_API_KEY_HEADER` | X-API-Key | Header name for API key |
+
+**Making Authenticated Requests:**
+
+```bash
+# With API key
+curl -H "X-API-Key: your-key" http://localhost:8000/api/interact \
+  -d '{"prompt": "Hello"}' -H "Content-Type: application/json"
+
+# Check hardware without auth (read-only)
+curl http://localhost:8000/api/hardware
+```
+
+### Rate Limiting
+
+Rate limiting is enabled by default when `slowapi` is installed.
+
+**Environment Variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NEXUS_RATE_LIMIT_ENABLED` | true | Enable/disable rate limiting |
+| `NEXUS_RATE_LIMIT_RPM` | 60 | Requests per minute |
+| `NEXUS_RATE_LIMIT_BURST` | 10 | Burst allowance |
+
+**Rate Limit Response:**
+
+```json
+{
+  "detail": "Rate limit exceeded: 60 per 1 minute"
+}
+```
+
+### GPU Governance
+
+Configure GPU resource limits:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NEXUS_GPU_MEMORY_LIMIT` | 50 | Max GPU memory usage (%) |
+| `NEXUS_GPU_UTILIZATION_LIMIT` | 80 | Max GPU utilization (%) |
+| `NEXUS_GPU_THERMAL_WARNING` | 75 | GPU thermal warning (°C) |
+| `NEXUS_GPU_THERMAL_CRITICAL` | 85 | GPU thermal critical (°C) |
 
 ---
 

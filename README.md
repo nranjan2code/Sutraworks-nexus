@@ -7,9 +7,15 @@
 
 **A next-generation AI architecture that learns and responds continuously, never hallucinates, and evolves like a living system.**
 
-## 🎉 Production Ready - v2.0.0
+## 🎉 Production Ready - v2.1.0
 
 NEXUS is now **production-grade** with zero technical debt! Full details in [PRODUCTION_READY.md](PRODUCTION_READY.md).
+
+**New in v2.1.0:**
+- ✅ Dynamic hardware detection (CPU/GPU/MPS/Neural Engine)
+- ✅ GPU-aware resource governance (memory & utilization limits)
+- ✅ Security hardening (API key auth, rate limiting)
+- ✅ New `/api/hardware` endpoint
 
 **New in v2.0:**
 - ✅ Real tokenization (HuggingFace transformers)
@@ -18,8 +24,7 @@ NEXUS is now **production-grade** with zero technical debt! Full details in [PRO
 - ✅ Error recovery (circuit breakers, graceful degradation)
 - ✅ Memory management (leak detection, automatic cleanup)
 - ✅ Production deployment (Docker, systemd, full stack)
-- ✅ Operational runbook
-- ✅ Integration test suite
+- ✅ Thermal monitoring (CPU and GPU)
 
 **Deploy Now:**
 ```bash
@@ -75,8 +80,10 @@ print(nexus.get_status())
 **Nexus Continuum** is a background daemon that allows NEXUS to "live" on your machine, continuously learning from interactions and "dreaming" during idle time, while strictly respecting system resources.
 
 ### Key Features
-- **Resource Governance**: Active: 10% CPU | Idle: 25% CPU
-- **Thermal Monitoring**: Warning at 70°C, critical at 80°C
+- **Dynamic Hardware Detection**: Auto-detects CPU/GPU/MPS/Neural Engine
+- **Resource Governance**: Active: 10% CPU | Idle: 25% CPU | GPU: 50% memory
+- **Thermal Monitoring**: Warning at 70°C (CPU/GPU), critical at 80°C
+- **Security**: API key authentication, rate limiting (60 req/min)
 - **Continuous Evolution**: Learns from every interaction
 - **Checkpoint Persistence**: Auto-saves every 5 minutes
 - **Error Recovery**: Circuit breakers prevent cascading failures

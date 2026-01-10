@@ -6,9 +6,13 @@ FastAPI server that exposes the Nexus Continuum to the world.
 Serves:
 1. REST API for control and interaction.
 2. Web Dashboard for visualization.
+
+Security:
+- API key authentication (via NEXUS_API_KEY env var)
+- Rate limiting (60 requests/minute default)
 """
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -25,6 +29,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from nexus.service.daemon import NexusDaemon
+from nexus.service.auth import get_auth_manager, get_client_ip, AuthManager
+from nexus.service.hardware import detect_hardware, HardwareCapabilities
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -32,6 +38,23 @@ logger = logging.getLogger("nexus.server")
 
 # Global Daemon Instance
 daemon = NexusDaemon()
+
+# Authentication Manager
+auth_manager = get_auth_manager()
+
+# Rate Limiting (optional - only if slowapi is installed)
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.util import get_remote_address
+
+    limiter = Limiter(key_func=get_client_ip)
+    RATE_LIMITING_ENABLED = True
+    logger.info(f"Rate limiting enabled: {auth_manager.get_rate_limit_string()}")
+except ImportError:
+    limiter = None
+    RATE_LIMITING_ENABLED = False
+    logger.warning("slowapi not installed - rate limiting disabled")
 
 
 class SafeJSONResponse(JSONResponse):
@@ -61,6 +84,9 @@ class SafeJSONResponse(JSONResponse):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    logger.info("Service Startup: Detecting hardware...")
+    hardware = detect_hardware()
+    logger.info(f"Hardware: {hardware.summary()}")
     logger.info("Service Startup: Launching Daemon...")
     daemon.startup()
     yield
@@ -69,7 +95,18 @@ async def lifespan(app: FastAPI):
     daemon.shutdown()
 
 
-app = FastAPI(title="Nexus Continuum", lifespan=lifespan, default_response_class=SafeJSONResponse)
+app = FastAPI(
+    title="Nexus Continuum",
+    lifespan=lifespan,
+    default_response_class=SafeJSONResponse,
+    description="Production-ready AI system with dynamic hardware utilization",
+    version="2.1.0",
+)
+
+# Add rate limiting middleware if available
+if RATE_LIMITING_ENABLED:
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 # Models
@@ -136,25 +173,47 @@ async def get_ollama_tags():
 @app.get("/api/status")
 async def get_status():
     """Get full system status for dashboard."""
-    return daemon.get_status()
+    status = daemon.get_status()
+    # Add hardware info
+    status["hardware"] = detect_hardware().to_dict()
+    return status
 
 
-@app.post("/api/interact")
-async def interact(req: InteractRequest):
-    """Send a prompt to Nexus."""
-    if not daemon.running:
-        raise HTTPException(status_code=503, detail="Daemon is not running")
+@app.get("/api/hardware")
+async def get_hardware():
+    """Get detected hardware capabilities."""
+    return detect_hardware().to_dict()
 
-    start_time = os.times()
-    # This calls the daemon which queues the request
-    # Note: daemon.submit_request is currently blocking in our simplistic impl
-    # In a real async app we'd await a future.
-    try:
-        response = daemon.submit_request(req.prompt)
-        return {"response": response}
-    except Exception as e:
-        logger.error(f"Error processing request: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+
+# Rate-limited interact endpoint
+if RATE_LIMITING_ENABLED:
+
+    @app.post("/api/interact")
+    @limiter.limit(auth_manager.get_rate_limit_string())
+    async def interact(request: Request, req: InteractRequest):
+        """Send a prompt to Nexus (rate limited)."""
+        if not daemon.running:
+            raise HTTPException(status_code=503, detail="Daemon is not running")
+        try:
+            response = daemon.submit_request(req.prompt)
+            return {"response": response}
+        except Exception as e:
+            logger.error(f"Error processing request: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+else:
+
+    @app.post("/api/interact")
+    async def interact(req: InteractRequest):
+        """Send a prompt to Nexus."""
+        if not daemon.running:
+            raise HTTPException(status_code=503, detail="Daemon is not running")
+        try:
+            response = daemon.submit_request(req.prompt)
+            return {"response": response}
+        except Exception as e:
+            logger.error(f"Error processing request: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/control")
