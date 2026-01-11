@@ -122,7 +122,11 @@ class NEXUSTokenizer:
 - Caching for performance
 - Vocabulary size handling
 
+> [!NOTE]
+> For a deep evaluation of the tokenization architecture, including trade-offs and alternatives, see the [Tokenization Architecture Study](../research/tokenization-study.md).
+
 ---
+
 
 ### 2. Checkpoint Persistence (`nexus/service/checkpoint.py`)
 

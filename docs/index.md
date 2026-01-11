@@ -24,6 +24,8 @@ NEXUS (Neural EXploratory Unified Synthesis) represents a paradigm shift in AI a
 - [Theoretical Foundations](research/theory.md)
 - [Literature Review](research/literature.md)
 - [Design Principles](research/design-principles.md)
+- [Tokenization Architecture Study](research/tokenization-study.md) *(NEW)*
+
 
 ### 🏗️ Architecture
 - [System Overview](architecture/overview.md)

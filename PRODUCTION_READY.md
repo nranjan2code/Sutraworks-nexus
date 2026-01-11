@@ -14,12 +14,14 @@ NEXUS has been upgraded from research prototype to **production-grade, ever-runn
 
 ### 1. Real Tokenization ✅
 - **File:** `nexus/core/tokenizer.py`
+- **Study:** [Tokenization Architecture Study](docs/research/tokenization-study.md) *(deep evaluation)*
 - **Features:**
   - HuggingFace transformers integration
   - Special tokens for NEXUS ([UNCERTAIN], [REFUSE], etc.)
   - Batch processing with padding
   - Thread-safe operations
   - Refusal response generation
+
 
 ### 2. Checkpoint Persistence ✅
 - **File:** `nexus/service/checkpoint.py`
