@@ -250,8 +250,9 @@ NEXUS respects your system - it won't hog resources.
 
 ### Security
 
-- 🔐 **API Key Authentication** via `NEXUS_API_KEY` env var
+- 🔐 **API Key Authentication** via `NEXUS_API_KEY` (Strictly Enforced)
 - ⏱️ **Rate Limiting** - 60 requests/minute (configurable)
+- 🛡️ **SSRF Protection** - Strict whitelisting for `OLLAMA_HOST`
 - 🛡️ **Circuit Breakers** - Prevents cascading failures
 
 ### Resilience
@@ -318,6 +319,8 @@ nexus/
 | 1,000 tokens | 1,000,000 ops | 1,000 ops | **1,000x** |
 | 10,000 tokens | 100,000,000 ops | 10,000 ops | **10,000x** |
 | 100,000 tokens | 10B ops | 100,000 ops | **100,000x** |
+
+**Verified:** Generation uses O(N) state caching (no re-computation). Scaling is linear.
 
 ### Run Benchmarks
 

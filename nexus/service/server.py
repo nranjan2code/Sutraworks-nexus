@@ -10,17 +10,20 @@ Serves:
 Security:
 - API key authentication (via NEXUS_API_KEY env var)
 - Rate limiting (60 requests/minute default)
+- Safe configuration updates
+- SSRF protection
 """
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, Depends
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, Depends, Security
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
-from pydantic import BaseModel
-from typing import Any, Optional
+from pydantic import BaseModel, HttpUrl
+from typing import Any, Optional, List
 import os
 import uvicorn
 import math
 import json
+import re
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
@@ -68,7 +71,6 @@ class SafeJSONResponse(JSONResponse):
             return v
 
         # We do a recursive clean for common structures
-        # For a truly robust solution, we might want to use a custom json.JSONEncoder
         def clean_structure(obj):
             if isinstance(obj, dict):
                 return {k: clean_structure(v) for k, v in obj.items()}
@@ -124,8 +126,82 @@ class ConfigRequest(BaseModel):
     ollama_model: str
 
 
-# API Endpoints
-@app.get("/api/config")
+# --- Helpers ---
+
+
+def is_safe_url(url: str) -> bool:
+    """
+    Validate that a URL is safe to call (SSRF protection).
+    Allows localhost/127.0.0.1 for local Ollama, but blocks other internal IP ranges
+    unless explicitly allowed.
+    """
+    # Simple whitelist approach
+    allowed_domains = ["localhost", "127.0.0.1", "0.0.0.0"]
+
+    # Check scheme
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return False
+
+    # Extract host
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+
+        # Check against whitelist
+        if hostname in allowed_domains:
+            return True
+
+        return False
+    except Exception:
+        return False
+
+
+def update_env_file(updates: dict):
+    """
+    Safely update specific keys in .env without erasing other content.
+    """
+    env_path = ".env"
+    if not os.path.exists(env_path):
+        with open(env_path, "w") as f:
+            f.write("")
+
+    with open(env_path, "r") as f:
+        lines = f.readlines()
+
+    new_lines = []
+    updated_keys = set()
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            new_lines.append(line)
+            continue
+
+        key = stripped.split("=")[0].strip()
+        if key in updates:
+            new_lines.append(f"{key}={updates[key]}\n")
+            updated_keys.add(key)
+        else:
+            new_lines.append(line)
+
+    # Append new keys that weren't in the file
+    for key, value in updates.items():
+        if key not in updated_keys:
+            new_lines.append(f"{key}={value}\n")
+
+    with open(env_path, "w") as f:
+        f.writelines(new_lines)
+
+
+# --- API Endpoints ---
+
+
+# PROTECTED: Requires API Key
+@app.get("/api/config", dependencies=[Depends(auth_manager.verify_api_key)])
 async def get_config():
     """Get current configuration."""
     return {
@@ -134,18 +210,21 @@ async def get_config():
     }
 
 
-@app.post("/api/config")
+# PROTECTED: Requires API Key
+@app.post("/api/config", dependencies=[Depends(auth_manager.verify_api_key)])
 async def set_config(req: ConfigRequest):
     """Update configuration and reload daemon."""
+
+    # SSRF Check for config
+    if not is_safe_url(req.ollama_host):
+        raise HTTPException(status_code=400, detail="Invalid or unsafe Ollama host URL")
+
     # Update env vars for this process
     os.environ["OLLAMA_HOST"] = req.ollama_host
     os.environ["OLLAMA_MODEL"] = req.ollama_model
 
-    # Persist to .env file (simple append/replace for now)
-    # A robust solution would use a proper parser, but we'll do simple write
-    with open(".env", "w") as f:
-        f.write(f"OLLAMA_HOST={req.ollama_host}\n")
-        f.write(f"OLLAMA_MODEL={req.ollama_model}\n")
+    # Persist to .env file safely
+    update_env_file({"OLLAMA_HOST": req.ollama_host, "OLLAMA_MODEL": req.ollama_model})
 
     # Reload Daemon Component
     daemon.reload_teacher()
@@ -153,10 +232,16 @@ async def set_config(req: ConfigRequest):
     return {"status": "updated", "config": req.dict()}
 
 
-@app.get("/api/ollama/tags")
+# PROTECTED: Requires API Key
+@app.get("/api/ollama/tags", dependencies=[Depends(auth_manager.verify_api_key)])
 async def get_ollama_tags():
     """Proxy to discover available Ollama models."""
     host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+
+    if not is_safe_url(host):
+        logger.warning(f"Blocked potential SSRF to: {host}")
+        return {"models": []}
+
     try:
         # Use httpx or requests (requests is sync but simple for now)
         import requests
@@ -170,7 +255,8 @@ async def get_ollama_tags():
         return {"error": str(e), "models": []}
 
 
-@app.get("/api/status")
+# PROTECTED: Requires API Key
+@app.get("/api/status", dependencies=[Depends(auth_manager.verify_api_key)])
 async def get_status():
     """Get full system status for dashboard."""
     status = daemon.get_status()
@@ -179,18 +265,30 @@ async def get_status():
     return status
 
 
-@app.get("/api/hardware")
+# PROTECTED: Requires API Key
+@app.get("/api/hardware", dependencies=[Depends(auth_manager.verify_api_key)])
 async def get_hardware():
     """Get detected hardware capabilities."""
     return detect_hardware().to_dict()
 
 
+# Interact Endpoint - PROTECTED & Rate Limited
+@app.post("/api/interact", dependencies=[Depends(auth_manager.verify_api_key)])
+async def interact(request: Request, req: InteractRequest):
+    """Send a prompt to Nexus."""
+
+    # Check rate limit manually if limiter is enabled (since dependencies run before middleware sometimes)
+    # But using @limiter.limit decorators is the standard way.
+    pass
+
+
+# We need to define the endpoint function properly for rate limiting
 # Rate-limited interact endpoint
 if RATE_LIMITING_ENABLED:
 
-    @app.post("/api/interact")
+    @app.post("/api/interact", dependencies=[Depends(auth_manager.verify_api_key)])
     @limiter.limit(auth_manager.get_rate_limit_string())
-    async def interact(request: Request, req: InteractRequest):
+    def interact(request: Request, req: InteractRequest):
         """Send a prompt to Nexus (rate limited)."""
         if not daemon.running:
             raise HTTPException(status_code=503, detail="Daemon is not running")
@@ -203,8 +301,8 @@ if RATE_LIMITING_ENABLED:
 
 else:
 
-    @app.post("/api/interact")
-    async def interact(req: InteractRequest):
+    @app.post("/api/interact", dependencies=[Depends(auth_manager.verify_api_key)])
+    def interact(request: Request, req: InteractRequest):
         """Send a prompt to Nexus."""
         if not daemon.running:
             raise HTTPException(status_code=503, detail="Daemon is not running")
@@ -216,7 +314,8 @@ else:
             raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/control")
+# PROTECTED: Requires API Key
+@app.post("/api/control", dependencies=[Depends(auth_manager.verify_api_key)])
 async def control(req: ControlRequest):
     """Control the daemon state."""
     if req.action == "pause":
@@ -235,8 +334,9 @@ async def control(req: ControlRequest):
         raise HTTPException(status_code=400, detail="Unknown action")
 
 
-# Serve Dashboard
-# We will assume dashboard.html is in the same directory for simplicity
+# Serve Dashboard - PUBLIC (but API calls within it will fail without key)
+# TODO: In strict mode, maybe even the dashboard should be behind auth?
+# For now, we leave the static HTML public.
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 

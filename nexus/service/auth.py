@@ -142,15 +142,22 @@ def get_client_ip(request: Request) -> str:
     """
     Get client IP address for rate limiting.
 
-    Handles X-Forwarded-For header for proxied requests.
-    """
-    # Check for forwarded header (behind proxy)
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        # Take first IP (original client)
-        return forwarded.split(",")[0].strip()
+    Handles X-Forwarded-For header cautiously.
+    In a real production environment behind a known proxy (e.g., Nginx),
+    we should validate the source IP of the request before trusting X-Forwarded-For.
 
-    # Direct connection
+    For now, we default to the direct client host unless specifically configured to trust proxies.
+    """
+    # Check for trusted proxy configuration (not yet implemented in config, so default to safe)
+    trust_proxy = os.getenv("NEXUS_TRUST_PROXY", "false").lower() == "true"
+
+    if trust_proxy:
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            # Take first IP (original client)
+            return forwarded.split(",")[0].strip()
+
+    # Default to direct connection (Safer against spoofing if not behind a configured proxy)
     if request.client:
         return request.client.host
 

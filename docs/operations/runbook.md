@@ -176,16 +176,17 @@ export NEXUS_API_KEY="nexus_your-generated-key-here"
 |----------|---------|-------------|
 | `NEXUS_API_KEY` | None (public) | API key for authentication |
 | `NEXUS_API_KEY_HEADER` | X-API-Key | Header name for API key |
+| `NEXUS_TRUST_PROXY` | false | Trust `X-Forwarded-For` header |
 
 **Making Authenticated Requests:**
 
 ```bash
-# With API key
+# With API key (Required if NEXUS_API_KEY is set)
 curl -H "X-API-Key: your-key" http://localhost:8000/api/interact \
   -d '{"prompt": "Hello"}' -H "Content-Type: application/json"
 
-# Check hardware without auth (read-only)
-curl http://localhost:8000/api/hardware
+# Check status (Required if NEXUS_API_KEY is set)
+curl -H "X-API-Key: your-key" http://localhost:8000/api/status
 ```
 
 ### Rate Limiting

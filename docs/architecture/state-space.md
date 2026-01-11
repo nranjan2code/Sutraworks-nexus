@@ -249,6 +249,26 @@ def chunked_scan(self, x, chunk_size=2048):
     return torch.cat(outputs, dim=1)
 ```
 
+### State Caching for O(n) Generation
+
+For autoregressive generation, we don't need to recompute the entire sequence. We can maintain the current state $h_t$ and update it for the next token:
+
+$$
+h_{t+1} = \bar{A}h_t + \bar{B}x_{t+1}
+$$
+
+This allows **O(1)** per-token generation cost (total **O(n)** for sequence), compared to O(n) per-token (total O(n²)) for Transformers without KV-cache, or attention's intrinsic complexity.
+
+```python
+# O(1) step
+next_h, next_y = ssm.step(current_h, input_token)
+```
+
+NEXUS implements this via the `state` argument in `forward()`:
+1.  **Prefill**: Process prompt, return final state.
+2.  **Generate**: Pass state to `forward()`, process only new token, return updated state.
+
+
 ---
 
 ## Multi-Head State Space

@@ -66,6 +66,7 @@ NEXUS has been upgraded from research prototype to **production-grade, ever-runn
   - All components integrated
   - Automatic checkpoint recovery
   - Real text processing
+  - **Non-blocking Resource Governance**
   - Circuit breaker protection
   - Memory-safe long-running operation
   - Comprehensive status reporting
@@ -141,8 +142,11 @@ NEXUS has been upgraded from research prototype to **production-grade, ever-runn
 ### 14. Security Hardening ✅ (NEW in v2.1.0)
 - **File:** `nexus/service/auth.py`
 - **Features:**
-  - API key authentication (via `NEXUS_API_KEY` env var)
+  - API key authentication (via `NEXUS_API_KEY` env var) - **Strictly Enforced**
   - Rate limiting: 60 req/min default (via slowapi)
+  - **Strict SSRF Protection** on `OLLAMA_HOST` (whitelist only)
+  - **Data Loss Prevention** for configuration updates
+  - **Anti-Spoofing** IP detection (trust proxy config)
   - Configurable via `NEXUS_RATE_LIMIT_RPM`
   - Constant-time key comparison (timing attack safe)
   - Optional JWT support for multi-user scenarios

@@ -279,8 +279,7 @@ def generate(
 - `top_p`: Nucleus sampling probability
 - `do_sample`: Whether to sample (vs greedy)
 
-**Returns:** Generated token IDs including prompt
-
+**Returns:** Generated token IDs including prompt. Uses O(N) state caching for efficiency.
 #### from_pretrained
 
 ```python
@@ -517,9 +516,11 @@ def forward(
 
 **Parameters:**
 - `x`: Input embeddings. Shape: `[batch, seq_len, d_model]`
-- `return_states`: Whether to return intermediate states
+- `state`: (Optional) Previous state for recurrent stepping.
+- `return_state`: Whether to return final state (default True in generation).
 
-**Returns:** Hidden states, optionally with intermediate layer states
+**Returns:** Tuple of `(output, state)` or just `output`.
+
 
 ---
 
