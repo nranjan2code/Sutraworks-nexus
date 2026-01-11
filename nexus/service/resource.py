@@ -225,28 +225,30 @@ class GPUMonitor:
 
 @dataclass
 class ResourceConfig:
-    # CPU Usage Limits (percentage)
-    active_cpu_limit: float = 10.0
-    idle_cpu_limit: float = 25.0
+    # CPU Usage Limits (percentage) - STRICT GOVERNANCE for Pi stability
+    active_cpu_limit: float = 20.0   # Max 20% when user waiting
+    idle_cpu_limit: float = 30.0     # Max 30% during background learning
 
     # RAM Usage Limits (percentage of total system memory)
-    active_ram_limit: float = 30.0
+    active_ram_limit: float = 25.0   # Keep RAM low when active
     idle_ram_limit: float = 20.0
-    critical_ram_limit: float = 30.0  # Emergency abort threshold
+    critical_ram_limit: float = 40.0  # Emergency threshold
 
-    # Thermal limits (degrees Celsius)
-    thermal_warning: float = 70.0  # Start aggressive throttling
-    thermal_critical: float = 80.0  # Emergency pause
+    # Thermal limits (degrees Celsius) - Conservative for Pi5
+    thermal_warning: float = 65.0    # Start aggressive throttling early
+    thermal_critical: float = 75.0   # Emergency pause before Pi throttle (80°C)
 
     # Control intervals
-    check_interval: float = 1.0  # Seconds between checks
-    backoff_factor: float = 1.5  # Multiplier for sleep when violating
+    check_interval: float = 1.0      # Seconds between checks
+    backoff_factor: float = 2.0      # Aggressive backoff on violations
+    max_backoff_sleep: float = 10.0  # Maximum sleep time during throttling
+    min_loop_sleep: float = 0.1      # Minimum sleep between loop iterations
 
     # GPU Usage Limits (only applies when GPU is used)
-    gpu_memory_limit_percent: float = 50.0  # Don't hog GPU memory
-    gpu_utilization_limit: float = 80.0  # Leave headroom for other apps
-    gpu_thermal_warning: float = 75.0  # GPU-specific thermal warning
-    gpu_thermal_critical: float = 85.0  # GPU-specific thermal critical
+    gpu_memory_limit_percent: float = 50.0
+    gpu_utilization_limit: float = 80.0
+    gpu_thermal_warning: float = 70.0
+    gpu_thermal_critical: float = 80.0
 
 
 class ThermalMonitor:
@@ -412,6 +414,9 @@ class ResourceGovernor:
         self._consecutive_violations = 0
         self._thermal_monitor = ThermalMonitor()
         self._gpu_monitor = GPUMonitor()
+        
+        # CRITICAL: Self-limit process priority so NEXUS never starves the system
+        self._set_low_priority()
 
     def set_mode(self, mode: Literal["active", "idle"]):
         """Switch between active (user waiting) and idle (background learning) modes."""
@@ -419,6 +424,37 @@ class ResourceGovernor:
             logger.info(f"Resource Governor switching to {mode.upper()} mode")
             self.mode = mode
             self._consecutive_violations = 0
+
+    def _set_low_priority(self) -> None:
+        """
+        Set process to low priority so NEXUS never starves the system.
+        
+        On Linux/macOS: sets nice value to +10 (lower priority)
+        On Windows: sets to BELOW_NORMAL priority class
+        
+        This is a CRITICAL safety feature - even if the daemon loop has bugs,
+        the OS scheduler will always prioritize other processes.
+        """
+        try:
+            system = platform.system().lower()
+            
+            if system in ("linux", "darwin"):
+                # Nice value +10 means lower priority (range is -20 to +19)
+                # +10 is "nice" - yields to normal priority processes
+                current_nice = os.nice(0)  # Get current nice value
+                if current_nice < 10:
+                    os.nice(10 - current_nice)  # Increase to at least +10
+                    logger.info(f"Process priority set to nice +{os.nice(0)} (low priority)")
+            elif system == "windows":
+                # Use psutil to set Windows priority
+                self.process.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+                logger.info("Process priority set to BELOW_NORMAL (Windows)")
+            else:
+                logger.debug(f"Priority self-limiting not supported on {system}")
+                
+        except (OSError, PermissionError) as e:
+            # Not critical - just log and continue
+            logger.warning(f"Could not set low priority (may need permissions): {e}")
 
     def check_and_throttle(self) -> bool:
         """
@@ -543,7 +579,7 @@ class ResourceGovernor:
             self._consecutive_violations += 1
             # Sleep to lower average CPU usage
             sleep_time = 0.1 * (self.config.backoff_factor**self._consecutive_violations)
-            sleep_time = min(sleep_time, 5.0)  # Cap sleep at 5 seconds
+            sleep_time = min(sleep_time, self.config.max_backoff_sleep)
 
             logger.debug(f"Throttling for {sleep_time:.2f}s")
             time.sleep(sleep_time)

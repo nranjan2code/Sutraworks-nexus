@@ -30,8 +30,8 @@ from nexus.service.checkpoint import CheckpointManager, CheckpointMetadata
 from nexus.service.memory_manager import MemoryConfig, MemoryManager
 from nexus.service.metrics import HealthCheck, MetricsCollector
 from nexus.service.resilience import CircuitBreaker, GracefulDegradation
-from nexus.service.resource import ResourceGovernor, ResourceExhaustedError
-from nexus.training.teacher import OllamaTeacher
+from nexus.service.resource import ResourceGovernor, ResourceExhaustedError, ThermalThrottlingError
+from nexus.training.teacher import GeminiTeacher
 
 # Use centralized logging and memory utils
 from nexus.service.logging_config import get_logger
@@ -62,7 +62,7 @@ class NexusDaemon:
     def __init__(
         self,
         checkpoint_dir: str = "./nexus_checkpoints",
-        check_interval: float = 0.1,
+        check_interval: float = 1.0,  # 1 second for Pi-friendly operation
         tokenizer_model: str = "gpt2",
     ):
         """
@@ -99,7 +99,7 @@ class NexusDaemon:
         self.learning_breaker = CircuitBreaker("learning")
 
         # Teacher (optional)
-        self.teacher = OllamaTeacher()
+        self.teacher = GeminiTeacher()
         self.training_mode = False
         self.training_topic: Optional[str] = None
 
@@ -224,9 +224,9 @@ class NexusDaemon:
 
     def reload_teacher(self) -> None:
         """Reload teacher configuration from environment."""
-        logger.info("Reloading Ollama Teacher configuration...")
-        self.teacher = OllamaTeacher()
-        logger.info(f"Teacher reloaded: {self.teacher.base_url} / {self.teacher.model}")
+        logger.info("Reloading Gemini Teacher configuration...")
+        self.teacher = GeminiTeacher()
+        logger.info(f"Teacher reloaded: {self.teacher.model}")
 
     def _daemon_loop(self) -> None:
         """Main event loop."""
@@ -261,11 +261,16 @@ class NexusDaemon:
 
                 # 6. Background learning (low priority)
                 if not self.paused:
-                    self.resource_governor.set_mode("idle")
+                    self.resource_governor.set_mode("idle")  # Use idle limits during background learning
                     self._dream_and_learn()
+                    time.sleep(self.check_interval)  # Rate limit the loop
                 else:
                     time.sleep(self.check_interval)
 
+            except ThermalThrottlingError as e:
+                logger.critical(f"THERMAL CRITICAL: {e}. Pausing for cooldown...")
+                time.sleep(30.0)  # Wait 30 seconds for temperature to drop
+                continue
             except Exception as e:
                 logger.error(f"Error in daemon loop: {e}", exc_info=True)
                 time.sleep(1.0)  # Back off on errors
