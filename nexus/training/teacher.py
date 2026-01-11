@@ -7,10 +7,12 @@ Uses teacher-student distillation: Nexus learns to mimic the teacher's reasoning
 """
 
 import requests
-import logging
 from typing import Optional, Dict
 
-logger = logging.getLogger("nexus.teacher")
+# Use centralized logging
+from nexus.service.logging_config import get_logger
+
+logger = get_logger("teacher")
 
 
 class OllamaTeacher:

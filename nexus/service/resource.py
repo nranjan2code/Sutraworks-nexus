@@ -8,7 +8,6 @@ monitors system temperature to prevent overheating.
 """
 
 import gc
-import logging
 import os
 import platform
 import subprocess
@@ -18,9 +17,11 @@ from typing import Dict, Literal, Optional
 
 import psutil
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("nexus.governor")
+# Use centralized logging
+from nexus.service.logging_config import get_logger
+from nexus.service.memory_utils import cleanup_gpu_memory
+
+logger = get_logger("governor")
 
 
 class ResourceExhaustedError(Exception):

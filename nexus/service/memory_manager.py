@@ -16,7 +16,6 @@ Features:
 from __future__ import annotations
 
 import gc
-import logging
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -24,7 +23,10 @@ from typing import Any, Dict, Optional
 import psutil
 import torch
 
-logger = logging.getLogger("nexus.memory")
+# Use centralized logging
+from nexus.service.logging_config import get_logger
+
+logger = get_logger("memory_manager")
 
 
 @dataclass
@@ -237,9 +239,7 @@ class MemoryManager:
         # Clear weak references
         gc.collect()
 
-        total_freed = sum(
-            s.get("freed_mb", 0) for s in stats.values() if isinstance(s, dict)
-        )
+        total_freed = sum(s.get("freed_mb", 0) for s in stats.values() if isinstance(s, dict))
 
         logger.info(f"Aggressive cleanup completed: freed {total_freed:.2f} MB")
 
@@ -349,9 +349,7 @@ class MemoryManager:
 
             # Detect leak: growth > 10 MB/hour
             if mb_per_hour > 10.0:
-                logger.warning(
-                    f"Potential memory leak detected: {mb_per_hour:.2f} MB/hour growth"
-                )
+                logger.warning(f"Potential memory leak detected: {mb_per_hour:.2f} MB/hour growth")
 
                 return {
                     "detected": True,

@@ -221,13 +221,16 @@ class TestErrorRecovery:
 
     def test_circuit_breaker_opens_on_failures(self):
         """Test circuit breaker opens after failures."""
-        breaker = CircuitBreaker("test")
+        # Use unique name to prevent state sharing with other tests
+        from nexus.service.resilience import CircuitBreakerOpenError
 
-        # Cause failures
+        breaker = CircuitBreaker("test_opens_on_failures")
+
+        # Cause failures - circuit may open mid-loop after threshold is reached
         for i in range(6):
             try:
                 breaker.call(lambda: 1 / 0)  # Division by zero
-            except ZeroDivisionError:
+            except (ZeroDivisionError, CircuitBreakerOpenError):
                 pass
 
         # Should be open now
@@ -235,8 +238,6 @@ class TestErrorRecovery:
         assert status["state"] == "open"
 
         # Should reject calls
-        from nexus.service.resilience import CircuitBreakerOpenError
-
         with pytest.raises(CircuitBreakerOpenError):
             breaker.call(lambda: "should fail")
 
@@ -364,21 +365,14 @@ class TestIntegration:
 
             # Restore state
             nexus2.model.load_state_dict(checkpoint["model_state_dict"])
-            nexus2.uncertainty_gate.load_state_dict(
-                checkpoint["uncertainty_gate_state_dict"]
-            )
-            nexus2.refusal_generator.load_state_dict(
-                checkpoint["refusal_generator_state_dict"]
-            )
+            nexus2.uncertainty_gate.load_state_dict(checkpoint["uncertainty_gate_state_dict"])
+            nexus2.refusal_generator.load_state_dict(checkpoint["refusal_generator_state_dict"])
             nexus2.lifecycle.load_state(checkpoint["lifecycle_state"])
 
             status_after = nexus2.get_status()
 
             # Verify experience was preserved
-            assert (
-                status_after["total_interactions"]
-                >= status_before["total_interactions"]
-            )
+            assert status_after["total_interactions"] >= status_before["total_interactions"]
 
     def test_memory_stability(self):
         """Test memory doesn't grow unbounded."""

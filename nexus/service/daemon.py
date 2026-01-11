@@ -14,7 +14,6 @@ Manages Living NEXUS with full production features:
 This is the heartbeat of ever-running, ever-evolving NEXUS.
 """
 
-import logging
 import os
 import queue
 import threading
@@ -34,7 +33,11 @@ from nexus.service.resilience import CircuitBreaker, GracefulDegradation
 from nexus.service.resource import ResourceGovernor, ResourceExhaustedError
 from nexus.training.teacher import OllamaTeacher
 
-logger = logging.getLogger("nexus.daemon")
+# Use centralized logging and memory utils
+from nexus.service.logging_config import get_logger
+from nexus.service.memory_utils import cleanup_gpu_memory, memory_cleanup_context
+
+logger = get_logger("daemon")
 
 
 class NexusDaemon:
@@ -459,6 +462,9 @@ class NexusDaemon:
             path = self.checkpoint_manager.save_checkpoint(self.nexus, metadata)
 
             self.last_checkpoint_time = time.time()
+
+            # Clean up GPU memory after checkpoint (serialization can allocate temp buffers)
+            cleanup_gpu_memory(verbose=False)
 
             logger.info(f"Checkpoint saved: {path.name}")
 

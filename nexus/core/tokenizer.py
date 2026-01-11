@@ -15,14 +15,16 @@ Features:
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import torch
 from transformers import AutoTokenizer
 
-logger = logging.getLogger("nexus.tokenizer")
+# Use centralized logging
+from nexus.service.logging_config import get_logger
+
+logger = get_logger("tokenizer")
 
 
 class NEXUSTokenizer:
@@ -92,16 +94,11 @@ class NEXUSTokenizer:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        logger.info(
-            f"Tokenizer initialized: {self.model_name}, "
-            f"vocab_size={self.vocab_size}"
-        )
+        logger.info(f"Tokenizer initialized: {self.model_name}, " f"vocab_size={self.vocab_size}")
 
     def _add_special_tokens(self) -> None:
         """Add NEXUS-specific special tokens to vocabulary."""
-        special_tokens_dict = {
-            "additional_special_tokens": list(self.SPECIAL_TOKENS.values())
-        }
+        special_tokens_dict = {"additional_special_tokens": list(self.SPECIAL_TOKENS.values())}
 
         num_added = self.tokenizer.add_special_tokens(special_tokens_dict)
 
@@ -352,10 +349,7 @@ class NEXUSTokenizer:
         return self.vocab_size
 
     def __repr__(self) -> str:
-        return (
-            f"NEXUSTokenizer(model={self.model_name}, "
-            f"vocab_size={self.vocab_size})"
-        )
+        return f"NEXUSTokenizer(model={self.model_name}, " f"vocab_size={self.vocab_size})"
 
 
 def create_tokenizer(

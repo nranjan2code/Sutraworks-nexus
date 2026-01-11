@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import logging
 import os
 import time
 from dataclasses import dataclass
@@ -25,7 +24,10 @@ from typing import Callable, Optional
 from fastapi import HTTPException, Request, Security
 from fastapi.security import APIKeyHeader
 
-logger = logging.getLogger("nexus.auth")
+# Use centralized logging
+from nexus.service.logging_config import get_logger
+
+logger = get_logger("auth")
 
 
 @dataclass

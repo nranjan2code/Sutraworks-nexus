@@ -17,7 +17,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from pydantic import BaseModel
 from typing import Any, Optional
-import logging
 import os
 import uvicorn
 import math
@@ -32,9 +31,10 @@ from nexus.service.daemon import NexusDaemon
 from nexus.service.auth import get_auth_manager, get_client_ip, AuthManager
 from nexus.service.hardware import detect_hardware, HardwareCapabilities
 
-# Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("nexus.server")
+# Use centralized logging
+from nexus.service.logging_config import get_logger
+
+logger = get_logger("server")
 
 # Global Daemon Instance
 daemon = NexusDaemon()

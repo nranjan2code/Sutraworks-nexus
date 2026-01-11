@@ -46,6 +46,7 @@ dependencies = [
 dev = [
     "pytest>=7.3.0",
     "pytest-cov>=4.0.0",
+    "pytest-asyncio>=0.21.0",
     "black>=23.0.0",
     "isort>=5.12.0",
     "mypy>=1.3.0",
@@ -68,6 +69,9 @@ nexus = "nexus.cli:main"
 where = ["."]
 include = ["nexus*"]
 
+[tool.setuptools.package-data]
+nexus = ["py.typed"]
+
 [tool.black]
 line-length = 100
 target-version = ['py310', 'py311', 'py312']
@@ -86,9 +90,19 @@ ignore = ["D100", "D104"]
 python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+check_untyped_defs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = true
+no_implicit_optional = true
+strict_equality = true
+show_error_codes = true
 ignore_missing_imports = true
+exclude = ["venv", "build", "dist"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v --cov=nexus --cov-report=term-missing"
+asyncio_mode = "auto"

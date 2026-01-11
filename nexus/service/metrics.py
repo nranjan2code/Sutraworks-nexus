@@ -16,7 +16,6 @@ Features:
 
 from __future__ import annotations
 
-import logging
 import time
 from collections import Counter, deque
 from dataclasses import dataclass, field
@@ -25,7 +24,10 @@ from typing import Any, Deque, Dict, List, Optional
 import psutil
 import torch
 
-logger = logging.getLogger("nexus.metrics")
+# Use centralized logging
+from nexus.service.logging_config import get_logger
+
+logger = get_logger("metrics")
 
 
 @dataclass

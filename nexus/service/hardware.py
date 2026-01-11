@@ -17,7 +17,6 @@ CPU-only mode always works.
 
 from __future__ import annotations
 
-import logging
 import os
 import platform
 import subprocess
@@ -27,7 +26,10 @@ from typing import Dict, List, Literal, Optional, Tuple
 
 import psutil
 
-logger = logging.getLogger("nexus.hardware")
+# Use centralized logging
+from nexus.service.logging_config import get_logger
+
+logger = get_logger("hardware")
 
 
 class DeviceType(Enum):

@@ -16,13 +16,15 @@ Features:
 from __future__ import annotations
 
 import functools
-import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Optional, TypeVar
 
-logger = logging.getLogger("nexus.resilience")
+# Use centralized logging
+from nexus.service.logging_config import get_logger
+
+logger = get_logger("resilience")
 
 T = TypeVar("T")
 
@@ -154,15 +156,10 @@ class CircuitBreaker:
         # Count recent failures
         recent_failures = len(self.failure_times)
 
-        logger.warning(
-            f"Circuit breaker '{self.name}' failure #{recent_failures}: {exception}"
-        )
+        logger.warning(f"Circuit breaker '{self.name}' failure #{recent_failures}: {exception}")
 
         # Check if we should open circuit
-        if (
-            self.state == CircuitState.CLOSED
-            and recent_failures >= self.config.failure_threshold
-        ):
+        if self.state == CircuitState.CLOSED and recent_failures >= self.config.failure_threshold:
             self._transition_to_open()
 
         elif self.state == CircuitState.HALF_OPEN:
