@@ -61,6 +61,11 @@ class TrainingConfig:
     energy_loss_weight: float = 0.2
     causal_loss_weight: float = 0.2
     
+    # EMA settings for world model target encoder
+    ema_enabled: bool = True
+    ema_decay: float = 0.996
+    ema_update_every_n_steps: int = 1
+    
     # Checkpointing
     checkpoint_dir: str = "checkpoints"
     save_every_n_steps: int = 1000
@@ -181,6 +186,7 @@ class NEXUSTrainer:
     - Checkpointing
     - Logging
     - Learning rate scheduling
+    - EMA updates for world model target encoder
     """
     
     def __init__(
@@ -216,8 +222,27 @@ class NEXUSTrainer:
         self.epoch = 0
         self.best_eval_loss = float("inf")
         
+        # EMA tracking
+        self._ema_enabled = config.ema_enabled and self._has_world_model()
+        
         # Create checkpoint directory
         os.makedirs(config.checkpoint_dir, exist_ok=True)
+    
+    def _has_world_model(self) -> bool:
+        """Check if model has a world model with target encoder."""
+        return (
+            hasattr(self.model, "world_model") and
+            self.model.world_model is not None and
+            hasattr(self.model.world_model, "update_target_encoder")
+        )
+    
+    def _update_ema(self) -> None:
+        """Update EMA for world model target encoder."""
+        if not self._ema_enabled:
+            return
+        
+        if self.global_step % self.config.ema_update_every_n_steps == 0:
+            self.model.world_model.update_target_encoder()
         
     def _create_optimizer(self) -> AdamW:
         """Create optimizer with weight decay handling."""
@@ -345,6 +370,9 @@ class NEXUSTrainer:
                         
                     self.scheduler.step()
                     self.optimizer.zero_grad()
+                    
+                    # EMA update for world model target encoder
+                    self._update_ema()
                     
                     self.global_step += 1
                     progress_bar.update(1)

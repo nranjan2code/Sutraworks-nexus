@@ -43,6 +43,39 @@ from nexus.core.flowing import (
     UnifiedDynamics,
     create_flowing_nexus,
     create_living_flowing_nexus,
+    DynamicsDivergenceError,
+)
+
+# Type definitions
+from nexus.core.types import (
+    # Tensor types
+    BatchTensor,
+    SeqTensor,
+    HiddenTensor,
+    LogitsTensor,
+    EnergyTensor,
+    ConfidenceTensor,
+    # Output types
+    FlowingOutput,
+    ReasoningOutput,
+    EnergyOutput,
+    CausalOutput,
+    WorldModelOutput,
+    LossOutput,
+    # Batch types
+    TrainingBatch,
+    InferenceBatch,
+    # Protocols
+    NEXUSModel,
+    HasWorldModel,
+    HasReasoner,
+    HasCausal,
+    Learnable,
+    # Utility types
+    DeviceType,
+    get_device,
+    SSMCache,
+    EquilibriumInfo,
 )
 
 __all__ = [
@@ -57,6 +90,7 @@ __all__ = [
     "UnifiedDynamics",
     "create_flowing_nexus",
     "create_living_flowing_nexus",
+    "DynamicsDivergenceError",
     
     # Equilibrium components
     "EquilibriumCore",
@@ -92,4 +126,29 @@ __all__ = [
     "LivingNEXUS",
     "LivingConfig",
     "create_living_nexus",
+    
+    # Type definitions
+    "BatchTensor",
+    "SeqTensor",
+    "HiddenTensor",
+    "LogitsTensor",
+    "EnergyTensor",
+    "ConfidenceTensor",
+    "FlowingOutput",
+    "ReasoningOutput",
+    "EnergyOutput",
+    "CausalOutput",
+    "WorldModelOutput",
+    "LossOutput",
+    "TrainingBatch",
+    "InferenceBatch",
+    "NEXUSModel",
+    "HasWorldModel",
+    "HasReasoner",
+    "HasCausal",
+    "Learnable",
+    "DeviceType",
+    "get_device",
+    "SSMCache",
+    "EquilibriumInfo",
 ]

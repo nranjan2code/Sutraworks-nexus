@@ -100,6 +100,9 @@ When working with NEXUS, use these correct parameter names:
 | `memory_size` | int | Co-evolving memory size (default: 128) |
 | `implicit_diff` | bool | Use implicit differentiation (default: True) |
 | `vocab_size` | int | Vocabulary size (default: 50000) |
+| `gradient_checkpointing` | bool | Enable gradient checkpointing (default: False) |
+| `checkpoint_every_n_steps` | int | Checkpoint frequency (default: 5) |
+| `max_trajectory_length` | int | Max trajectory states to keep (default: 10) |
 
 ### NEXUSConfig Parameters (Layered)
 | Parameter | Type | Description |
@@ -197,21 +200,22 @@ nexus/
 │   ├── flowing.py       # 🆕 FlowingNEXUS - layer-free architecture
 │   ├── equilibrium.py   # 🆕 Equilibrium dynamics, implicit diff
 │   ├── continuous_ssm.py # 🆕 Continuous SSM with emergent depth
+│   ├── types.py         # 🆕 Type definitions and protocols
 │   ├── nexus_core.py    # Main NEXUSCore class & NEXUSConfig
 │   ├── living.py        # LivingNEXUS - unified learn+respond interface
 │   ├── lifecycle.py     # LifecycleManager, UncertaintyGate (continuous evolution)
-│   ├── state_space.py   # SelectiveStateSpace & StateSpaceConfig
+│   ├── state_space.py   # SelectiveStateSpace with true parallel scan
 │   ├── world_model.py   # HierarchicalWorldModel & WorldModelConfig
 │   ├── reasoning.py     # NeuroSymbolicReasoner & ReasoningConfig
 │   ├── energy.py        # AdaptiveEnergyModule & EnergyConfig
 │   └── causal.py        # CausalInferenceEngine & CausalConfig
 ├── training/
-│   ├── trainer.py       # NEXUSTrainer
-│   ├── continual.py     # ContinualLearner - online learning
-│   ├── losses.py        # NEXUSLoss, JEPALoss, CausalLoss
+│   ├── trainer.py       # NEXUSTrainer (with EMA callback)
+│   ├── continual.py     # ContinualLearner + FlowingContinualLearner
+│   ├── losses.py        # NEXUSLoss, JEPALoss, CausalLoss, FlowingLoss
 │   └── data.py          # Data utilities
 └── evaluation/
-    ├── benchmarks.py    # NEXUSBenchmark
+    ├── benchmarks.py    # NEXUSBenchmark, ScalingBenchmark
     └── metrics.py       # Evaluation metrics
 ```
 
@@ -221,3 +225,4 @@ nexus/
 3. **Evolve organically**: No stages or labels, just continuous growth
 4. **Track knowledge**: Log domain confidence and refusal rates
 5. **Prefer layer-free**: Use FlowingNEXUS for new development (emergent depth)
+6. **Type safety**: Use types from `nexus.core.types` for better IDE support

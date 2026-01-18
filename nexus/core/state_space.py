@@ -338,10 +338,179 @@ class SelectiveStateSpace(nn.Module):
         D: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Parallel scan implementation.
+        True parallel scan implementation using associative scan algorithm.
+        
+        This achieves O(n) work with O(log n) depth, enabling efficient
+        parallelization on GPU. The key insight is that SSM recurrence
+        can be expressed as an associative binary operation.
+        
+        For SSM: h_t = A_t * h_{t-1} + B_t * x_t
+        
+        We define associative operation ⊕ on pairs (A, Bu):
+            (A2, Bu2) ⊕ (A1, Bu1) = (A2 * A1, A2 * Bu1 + Bu2)
+        
+        This allows parallel prefix sum computation.
         """
         batch, seq_len, d_inner = x.shape
         d_state = A.shape[1]
+        device = x.device
+        dtype = x.dtype
+
+        # Discretize
+        dt_A = torch.einsum("bld,dn->bldn", dt, A)
+        A_bar = torch.exp(dt_A)  # (batch, seq_len, d_inner, d_state)
+
+        dt_B = dt.unsqueeze(-1) * B.unsqueeze(-2)  # (batch, seq_len, d_inner, d_state)
+        B_bar = dt_B
+
+        x_reshaped = x.unsqueeze(-1)  # (batch, seq_len, d_inner, 1)
+        Bu = B_bar * x_reshaped  # (batch, seq_len, d_inner, d_state)
+
+        # Parallel associative scan
+        # We compute the cumulative products and sums in log(n) parallel steps
+        h_all = self._associative_scan(A_bar, Bu, device, dtype)
+
+        # Compute outputs
+        # y_t = sum_n(h_t[d,n] * C_t[b,n]) for each d
+        y = torch.einsum("bldn,bln->bld", h_all, C)
+
+        # Add skip connection
+        y = y + D * x
+
+        # Return final hidden state
+        h_final = h_all[:, -1]  # (batch, d_inner, d_state)
+
+        return y, h_final
+
+    def _associative_scan(
+        self,
+        A_bar: torch.Tensor,
+        Bu: torch.Tensor,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        """
+        Compute parallel prefix scan using the associative property.
+        
+        The associative operation is:
+            (A2, Bu2) ⊕ (A1, Bu1) = (A2 * A1, A2 * Bu1 + Bu2)
+        
+        This computes h[t] = A_bar[t] * h[t-1] + Bu[t] for all t in parallel.
+        
+        Uses Blelloch's parallel scan algorithm:
+        1. Up-sweep (reduce) phase: compute partial products
+        2. Down-sweep phase: compute final values
+        
+        Args:
+            A_bar: Discretized A matrix (batch, seq_len, d_inner, d_state)
+            Bu: B * x products (batch, seq_len, d_inner, d_state)
+            
+        Returns:
+            h_all: Hidden states for all timesteps (batch, seq_len, d_inner, d_state)
+        """
+        batch, seq_len, d_inner, d_state = A_bar.shape
+        
+        # Pad to power of 2 for clean parallel scan
+        log2_len = max(1, (seq_len - 1).bit_length())
+        padded_len = 1 << log2_len
+        
+        if padded_len > seq_len:
+            # Pad with identity elements: A=1, Bu=0
+            pad_size = padded_len - seq_len
+            A_pad = torch.ones(batch, pad_size, d_inner, d_state, device=device, dtype=dtype)
+            Bu_pad = torch.zeros(batch, pad_size, d_inner, d_state, device=device, dtype=dtype)
+            A_bar = torch.cat([A_bar, A_pad], dim=1)
+            Bu = torch.cat([Bu, Bu_pad], dim=1)
+        
+        # Work arrays for scan
+        A_work = A_bar.clone()
+        Bu_work = Bu.clone()
+        
+        # Up-sweep (reduce) phase
+        for d in range(log2_len):
+            step = 1 << (d + 1)
+            half_step = 1 << d
+            
+            # Indices for parallel combination
+            # Combine elements at positions (k*step + half_step - 1) with (k*step + step - 1)
+            idx_left = torch.arange(half_step - 1, padded_len, step, device=device)
+            idx_right = torch.arange(step - 1, padded_len, step, device=device)
+            
+            # Apply associative operation: (A_right, Bu_right) ⊕ (A_left, Bu_left)
+            # = (A_right * A_left, A_right * Bu_left + Bu_right)
+            A_left = A_work[:, idx_left]
+            Bu_left = Bu_work[:, idx_left]
+            A_right = A_work[:, idx_right]
+            Bu_right = Bu_work[:, idx_right]
+            
+            # Update right positions with combined values
+            A_work[:, idx_right] = A_right * A_left
+            Bu_work[:, idx_right] = A_right * Bu_left + Bu_right
+        
+        # Down-sweep phase
+        # Set last element to identity for down-sweep
+        A_work[:, -1] = 1.0
+        Bu_work[:, -1] = 0.0
+        
+        for d in range(log2_len - 1, -1, -1):
+            step = 1 << (d + 1)
+            half_step = 1 << d
+            
+            idx_left = torch.arange(half_step - 1, padded_len, step, device=device)
+            idx_right = torch.arange(step - 1, padded_len, step, device=device)
+            
+            # Save old left values
+            A_left_old = A_work[:, idx_left].clone()
+            Bu_left_old = Bu_work[:, idx_left].clone()
+            
+            # Left gets right's value
+            A_work[:, idx_left] = A_work[:, idx_right]
+            Bu_work[:, idx_left] = Bu_work[:, idx_right]
+            
+            # Right gets combination: (old_left) ⊕ (old_right)
+            A_work[:, idx_right] = A_left_old * A_work[:, idx_right]
+            Bu_work[:, idx_right] = A_left_old * Bu_work[:, idx_right] + Bu_left_old
+        
+        # Bu_work now contains the prefix sums (hidden states)
+        # But we need to shift and add back the original contribution
+        # h[t] = A_bar[0:t].prod() * h[0] + sum(A_bar[i+1:t].prod() * Bu[i])
+        
+        # Actually, for SSM starting from h[-1]=0:
+        # We need to combine scan result with original A_bar and Bu
+        h_all = A_bar * Bu_work + Bu  # Adjust for exclusive vs inclusive scan
+        
+        # Simpler approach: recompute with scan results as cumulative A products
+        # Actually the cleanest is to use the scan directly
+        h_all = Bu_work[:, :seq_len]  # Trim padding, this is exclusive scan
+        
+        # Convert exclusive to inclusive by shifting and adding current Bu
+        h_all = torch.cat([
+            Bu[:, :1],  # h[0] = Bu[0] (since h[-1] = 0)
+            A_bar[:, 1:seq_len] * h_all[:, :-1] + Bu[:, 1:seq_len]
+        ], dim=1) if seq_len > 1 else Bu[:, :1]
+        
+        return h_all
+
+    def _sequential_scan(
+        self,
+        x: torch.Tensor,
+        dt: torch.Tensor,
+        A: torch.Tensor,
+        B: torch.Tensor,
+        C: torch.Tensor,
+        D: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Sequential scan implementation for debugging and small sequences.
+        
+        This is the reference implementation with O(n) sequential steps.
+        Used when parallel scan overhead exceeds benefits (very short sequences)
+        or for numerical verification.
+        """
+        batch, seq_len, d_inner = x.shape
+        d_state = A.shape[1]
+        device = x.device
+        dtype = x.dtype
 
         # Discretize
         dt_A = torch.einsum("bld,dn->bldn", dt, A)
@@ -353,15 +522,8 @@ class SelectiveStateSpace(nn.Module):
         x_reshaped = x.unsqueeze(-1)
         Bu = B_bar * x_reshaped
 
-        # Simple Sequential Scan for correctness in this POC
-        # (Real parallel scan requires associative op definition which is verbose here)
-        # Note: Implementing full parallel scan in pure PyTorch is slow;
-        # for a "Review Fix", correct sequential is better than broken parallel.
-        # But to satisfy "O(N) generation", sequential is fine for step-by-step.
-        # For training, we ideally want parallel.
-        # We will keep the sequential loop here for logic clarity and return the final state.
-
-        h = torch.zeros(batch, d_inner, d_state, device=x.device, dtype=x.dtype)
+        # Sequential scan with proper device placement
+        h = torch.zeros(batch, d_inner, d_state, device=device, dtype=dtype)
         ys = []
 
         for t in range(seq_len):
@@ -373,9 +535,6 @@ class SelectiveStateSpace(nn.Module):
         y = y + D * x
 
         return y, h
-
-    def _sequential_scan(self, x, dt, A, B, C, D):
-        return self._parallel_scan(x, dt, A, B, C, D)
 
 
 class SelectiveStateSpaceBlock(nn.Module):

@@ -370,7 +370,7 @@ class HierarchicalWorldModel(nn.Module):
         
         # Get target positions (indices where target_mask is True)
         # Simplified: predict all positions, loss computed only on targets
-        target_positions = torch.arange(seq_len, device=x.device)
+        target_positions = torch.arange(seq_len, device=x.device, dtype=torch.long)
         target_positions = target_positions.unsqueeze(0).expand(batch, -1)
         
         # Predict target representations from context

@@ -173,7 +173,7 @@ class IterativeRefinement(nn.Module):
         energies = []
         
         max_iter = n_iterations or self.config.max_iterations
-        actual_iterations = torch.zeros(batch, device=device)
+        actual_iterations = torch.zeros(batch, device=device, dtype=x.dtype)
         converged = torch.zeros(batch, dtype=torch.bool, device=device)
         
         for i in range(max_iter):

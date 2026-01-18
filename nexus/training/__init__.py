@@ -3,7 +3,13 @@
 from nexus.training.trainer import NEXUSTrainer, TrainingConfig
 from nexus.training.data import NEXUSDataset, DataConfig, SyntheticNEXUSDataset, create_dataloader
 from nexus.training.losses import NEXUSLoss, JEPALoss, ContrastiveLoss, CausalLoss
-from nexus.training.continual import ContinualConfig, ContinualLearner
+from nexus.training.continual import (
+    ContinualConfig,
+    ContinualLearner,
+    FlowingContinualConfig,
+    FlowingContinualLearner,
+    FlowingLoss,
+)
 
 __all__ = [
     # Trainer
@@ -19,7 +25,11 @@ __all__ = [
     "JEPALoss",
     "ContrastiveLoss",
     "CausalLoss",
-    # Continual Learning
+    # Continual Learning - Traditional
     "ContinualConfig",
     "ContinualLearner",
+    # Continual Learning - Flowing (Layer-Free)
+    "FlowingContinualConfig",
+    "FlowingContinualLearner",
+    "FlowingLoss",
 ]

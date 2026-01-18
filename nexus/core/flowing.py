@@ -34,6 +34,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union, Callable
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint as gradient_checkpoint
 
 from nexus.core.equilibrium import (
     EquilibriumConfig,
@@ -101,6 +102,11 @@ class FlowingConfig:
     spectral_norm: bool = True
     implicit_diff: bool = True  # Use implicit differentiation
     jac_reg_weight: float = 0.01  # Jacobian regularization
+    
+    # Memory optimization
+    gradient_checkpointing: bool = False  # Enable gradient checkpointing
+    checkpoint_every_n_steps: int = 5  # Checkpoint every N flow steps
+    max_trajectory_length: int = 10  # Max trajectory states to keep in memory
 
     # General
     vocab_size: int = 50262  # GPT-2 (50257) + 5 NEXUS special tokens
@@ -333,45 +339,59 @@ class FlowingNEXUS(nn.Module):
         # Embed input
         embedded = self.embedding(x, modality=modality)
         batch, seq_len, d_model = embedded.shape
+        device = embedded.device
 
         # Initialize state
         z = self.init_state(embedded)
         memory_state = None
 
-        # Evolution trajectory
-        trajectory = [z] if return_trajectory else None
-        energies = []
+        # Evolution trajectory with memory management
+        # Only keep limited trajectory states to prevent OOM
+        trajectory: Optional[List[torch.Tensor]] = [] if return_trajectory else None
+        max_traj_len = self.config.max_trajectory_length
+        energies: List[torch.Tensor] = []
 
         # Flow toward equilibrium
         converged = False
+        final_step = 0
+        
         for step in range(self.config.max_flow_steps):
             if step_callback:
                 step_callback()
-            # SSM processing (efficient sequence handling)
-            ssm_result = self.continuous_ssm(z)
-            z_ssm = ssm_result["output"]
-
-            # Unified dynamics update
-            delta = self.dynamics(
-                z_ssm, embedded, t=torch.tensor(step / self.config.max_flow_steps)
-            )
-
-            # Memory co-evolution
-            z_mem, memory_state = self.memory(z_ssm, memory_state, dt=0.1)
+            
+            # Use gradient checkpointing for memory efficiency during training
+            if self.training and self.config.gradient_checkpointing:
+                if step % self.config.checkpoint_every_n_steps == 0:
+                    z_ssm, delta, z_mem, memory_state = self._checkpointed_step(
+                        z, embedded, memory_state, step
+                    )
+                else:
+                    z_ssm, delta, z_mem, memory_state = self._flow_step(
+                        z, embedded, memory_state, step
+                    )
+            else:
+                z_ssm, delta, z_mem, memory_state = self._flow_step(
+                    z, embedded, memory_state, step
+                )
 
             # Combined update with damping
             z_new = z + self.config.damping * (delta + 0.1 * (z_mem - z))
 
             # Compute "energy" (residual norm)
             energy = (z_new - z).norm(dim=-1).mean()
-            energies.append(energy)
+            energies.append(energy.detach())  # Detach to prevent memory accumulation
 
+            # Memory-efficient trajectory storage
             if trajectory is not None:
-                trajectory.append(z_new)
+                if len(trajectory) >= max_traj_len:
+                    # Keep first, last few, and evenly spaced samples
+                    trajectory.pop(1)  # Remove second-oldest, keep first
+                trajectory.append(z_new.detach().clone())
 
             # Check convergence
             if energy < self.config.convergence_threshold:
                 converged = True
+                final_step = step + 1
                 break
 
             # Check for divergence (Numerical explosion)
@@ -381,6 +401,7 @@ class FlowingNEXUS(nn.Module):
                 )
 
             z = z_new
+            final_step = step + 1
 
         # z is now the equilibrium (or best approximation)
         z_star = z
@@ -404,12 +425,12 @@ class FlowingNEXUS(nn.Module):
         regression_out = self.regression_head(z_star)
 
         # Confidence based on convergence quality
-        final_energy = energies[-1] if energies else torch.tensor(0.0)
+        final_energy = energies[-1] if energies else torch.tensor(0.0, device=device)
         conf_input = torch.cat(
             [
                 z_star.mean(dim=1),
-                final_energy.unsqueeze(0).expand(batch, 1),
-                torch.tensor([[step / self.config.max_flow_steps]], device=z_star.device).expand(
+                final_energy.unsqueeze(0).expand(batch, 1).to(device),
+                torch.tensor([[final_step / self.config.max_flow_steps]], device=device).expand(
                     batch, 1
                 ),
             ],
@@ -422,12 +443,57 @@ class FlowingNEXUS(nn.Module):
             "hidden_states": z_star,
             "regression": regression_out,
             "confidence": confidence,
-            "flow_steps": step + 1,
+            "flow_steps": final_step,
             "converged": converged,
             "final_energy": final_energy,
             "trajectory": trajectory,
             "memory": memory_state,
         }
+
+    def _flow_step(
+        self,
+        z: torch.Tensor,
+        embedded: torch.Tensor,
+        memory_state: Optional[torch.Tensor],
+        step: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Single flow step computation."""
+        # SSM processing (efficient sequence handling)
+        ssm_result = self.continuous_ssm(z)
+        z_ssm = ssm_result["output"]
+
+        # Unified dynamics update
+        delta = self.dynamics(
+            z_ssm, embedded, t=torch.tensor(step / self.config.max_flow_steps, device=z.device)
+        )
+
+        # Memory co-evolution
+        z_mem, memory_state = self.memory(z_ssm, memory_state, dt=0.1)
+
+        return z_ssm, delta, z_mem, memory_state
+
+    def _checkpointed_step(
+        self,
+        z: torch.Tensor,
+        embedded: torch.Tensor,
+        memory_state: Optional[torch.Tensor],
+        step: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Gradient-checkpointed flow step for memory efficiency."""
+        def _inner_step(z_in: torch.Tensor, emb: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            ssm_result = self.continuous_ssm(z_in)
+            z_ssm = ssm_result["output"]
+            delta = self.dynamics(
+                z_ssm, emb, t=torch.tensor(step / self.config.max_flow_steps, device=z_in.device)
+            )
+            return z_ssm, delta
+
+        z_ssm, delta = gradient_checkpoint(_inner_step, z, embedded, use_reentrant=False)
+        
+        # Memory evolution not checkpointed (stateful)
+        z_mem, memory_state = self.memory(z_ssm, memory_state, dt=0.1)
+
+        return z_ssm, delta, z_mem, memory_state
 
     def imagine(
         self,

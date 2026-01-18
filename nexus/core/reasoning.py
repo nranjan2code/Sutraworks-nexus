@@ -477,12 +477,12 @@ class NeuroSymbolicReasoner(nn.Module):
         if context is not None and context.numel() > 0:
             fact_emb = self.encode_facts(context)  # (batch, n_facts, d_symbol)
         elif self.n_facts > 0:
-            # Use stored fact bank
-            fact_emb = self.fact_bank[:self.n_facts].unsqueeze(0)
+            # Use stored fact bank - ensure it's on the correct device
+            fact_emb = self.fact_bank[:self.n_facts].unsqueeze(0).to(device)
             fact_emb = fact_emb.expand(batch, -1, -1)
         else:
             # No facts available - create a dummy fact bank for computation
-            fact_emb = torch.zeros(batch, 1, self.config.d_symbol, device=device)
+            fact_emb = torch.zeros(batch, 1, self.config.d_symbol, device=device, dtype=query.dtype)
             
         # Step 1: Direct fact retrieval (System 1 - fast)
         retrieval_weights, retrieved = self.soft_unification.unify(

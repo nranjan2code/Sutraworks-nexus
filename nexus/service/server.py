@@ -273,45 +273,31 @@ async def get_hardware():
 
 
 # Interact Endpoint - PROTECTED & Rate Limited
+# Unified interact endpoint that handles both rate-limited and non-rate-limited cases
 @app.post("/api/interact", dependencies=[Depends(auth_manager.verify_api_key)])
 async def interact(request: Request, req: InteractRequest):
-    """Send a prompt to Nexus."""
-
-    # Check rate limit manually if limiter is enabled (since dependencies run before middleware sometimes)
-    # But using @limiter.limit decorators is the standard way.
-    pass
-
-
-# We need to define the endpoint function properly for rate limiting
-# Rate-limited interact endpoint
-if RATE_LIMITING_ENABLED:
-
-    @app.post("/api/interact", dependencies=[Depends(auth_manager.verify_api_key)])
-    @limiter.limit(auth_manager.get_rate_limit_string())
-    def interact(request: Request, req: InteractRequest):
-        """Send a prompt to Nexus (rate limited)."""
-        if not daemon.running:
-            raise HTTPException(status_code=503, detail="Daemon is not running")
+    """Send a prompt to Nexus (rate limited if slowapi is installed)."""
+    if not daemon.running:
+        raise HTTPException(status_code=503, detail="Daemon is not running")
+    
+    # Apply rate limiting manually if enabled
+    if RATE_LIMITING_ENABLED and limiter is not None:
         try:
-            response = daemon.submit_request(req.prompt)
-            return {"response": response}
+            # Get rate limit from auth manager
+            rate_limit = auth_manager.get_rate_limit_string()
+            # Let limiter handle the rate limit check
+            await limiter._check_request_limit(request, None, rate_limit)
         except Exception as e:
-            logger.error(f"Error processing request: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-
-else:
-
-    @app.post("/api/interact", dependencies=[Depends(auth_manager.verify_api_key)])
-    def interact(request: Request, req: InteractRequest):
-        """Send a prompt to Nexus."""
-        if not daemon.running:
-            raise HTTPException(status_code=503, detail="Daemon is not running")
-        try:
-            response = daemon.submit_request(req.prompt)
-            return {"response": response}
-        except Exception as e:
-            logger.error(f"Error processing request: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            # If rate limit exceeded, the exception handler will catch it
+            if "RateLimitExceeded" in str(type(e)):
+                raise
+    
+    try:
+        response = daemon.submit_request(req.prompt)
+        return {"response": response}
+    except Exception as e:
+        logger.error(f"Error processing request: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # PROTECTED: Requires API Key
