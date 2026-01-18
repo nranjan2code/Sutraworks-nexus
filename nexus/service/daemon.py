@@ -31,7 +31,7 @@ from nexus.service.memory_manager import MemoryConfig, MemoryManager
 from nexus.service.metrics import HealthCheck, MetricsCollector
 from nexus.service.resilience import CircuitBreaker, GracefulDegradation
 from nexus.service.resource import ResourceGovernor, ResourceExhaustedError, ThermalThrottlingError
-from nexus.training.teacher import GeminiTeacher
+from nexus.training.teacher import OllamaTeacher
 
 # Use centralized logging and memory utils
 from nexus.service.logging_config import get_logger
@@ -99,7 +99,7 @@ class NexusDaemon:
         self.learning_breaker = CircuitBreaker("learning")
 
         # Teacher (optional)
-        self.teacher = GeminiTeacher()
+        self.teacher = OllamaTeacher()
         self.training_mode = False
         self.training_topic: Optional[str] = None
 
@@ -224,8 +224,8 @@ class NexusDaemon:
 
     def reload_teacher(self) -> None:
         """Reload teacher configuration from environment."""
-        logger.info("Reloading Gemini Teacher configuration...")
-        self.teacher = GeminiTeacher()
+        logger.info("Reloading Teacher configuration...")
+        self.teacher = OllamaTeacher()
         logger.info(f"Teacher reloaded: {self.teacher.model}")
 
     def _daemon_loop(self) -> None:

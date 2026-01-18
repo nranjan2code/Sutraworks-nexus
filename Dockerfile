@@ -38,6 +38,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # ======================================
 FROM base as application
 
+ARG PYTHON_VERSION
+
 # Copy installed packages from dependencies stage
 COPY --from=dependencies /usr/local/lib/python${PYTHON_VERSION}/site-packages /usr/local/lib/python${PYTHON_VERSION}/site-packages
 COPY --from=dependencies /usr/local/bin /usr/local/bin
